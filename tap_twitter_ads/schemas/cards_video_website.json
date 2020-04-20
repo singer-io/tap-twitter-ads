@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": ["null", "string"]
+    },
+    "video_poster_height": {
+      "type": ["null", "integer"]
+    },
+    "name": {
+      "type": ["null", "string"]
+    },
+    "website_shortened_url": {
+      "type": ["null", "string"]
+    },
+    "video_height": {
+      "type": ["null", "integer"]
+    },
+    "media_url": {
+      "type": ["null", "string"]
+    },
+    "content_duration_seconds": {
+      "type": ["null", "integer"]
+    },
+    "video_owner_id": {
+      "type": ["null", "string"]
+    },
+    "media_key": {
+      "type": ["null", "string"]
+    },
+    "website_display_url": {
+      "type": ["null", "string"]
+    },
+    "id": {
+      "type": ["null", "string"]
+    },
+    "video_width": {
+      "type": ["null", "integer"]
+    },
+    "website_dest_url": {
+      "type": ["null", "string"]
+    },
+    "created_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "card_uri": {
+      "type": ["null", "string"]
+    },
+    "title": {
+      "type": ["null", "string"]
+    },
+    "website_url": {
+      "type": ["null", "string"]
+    },
+    "updated_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "poster_media_url": {
+      "type": ["null", "string"]
+    },
+    "video_poster_width": {
+      "type": ["null", "integer"]
+    },
+    "deleted": {
+      "type": ["null", "boolean"]
+    },
+    "card_type": {
+      "type": ["null", "string"]
+    }
+  }
+}

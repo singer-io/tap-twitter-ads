@@ -1,0 +1,18 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "currency": {
+      "type": ["null", "string"]
+    },
+    "maximum_cpe_bid_local_micro": {
+      "type": ["null", "integer"]
+    },
+    "minimum_cpe_bid_local_micro": {
+      "type": ["null", "integer"]
+    },
+    "minimum_denomination": {
+      "type": ["null", "integer"]
+    }
+  }
+}

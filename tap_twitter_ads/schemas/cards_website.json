@@ -1,0 +1,59 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": ["null", "string"]
+    },
+    "name": {
+      "type": ["null", "string"]
+    },
+    "website_shortened_url": {
+      "type": ["null", "string"]
+    },
+    "image_display_height": {
+      "type": ["null", "integer"]
+    },
+    "media_url": {
+      "type": ["null", "string"]
+    },
+    "website_display_url": {
+      "type": ["null", "string"]
+    },
+    "id": {
+      "type": ["null", "string"]
+    },
+    "website_dest_url": {
+      "type": ["null", "string"]
+    },
+    "created_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "media_key": {
+      "type": ["null", "string"]
+    },
+    "image_display_width": {
+      "type": ["null", "integer"]
+    },
+    "website_title": {
+      "type": ["null", "string"]
+    },
+    "card_uri": {
+      "type": ["null", "string"]
+    },
+    "website_url": {
+      "type": ["null", "string"]
+    },
+    "updated_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "deleted": {
+      "type": ["null", "boolean"]
+    },
+    "card_type": {
+      "type": ["null", "string"]
+    }
+  }
+}

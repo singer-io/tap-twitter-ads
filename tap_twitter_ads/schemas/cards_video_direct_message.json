@@ -1,0 +1,53 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "account_id": {
+      "type": ["null", "string"]
+    },
+    "name": {
+      "type": ["null", "string"]
+    },
+    "first_cta": {
+      "type": ["null", "string"]
+    },
+    "first_cta_welcome_message_id": {
+      "type": ["null", "string"]
+    },
+    "media_url": {
+      "type": ["null", "string"]
+    },
+    "recipient_user_id": {
+      "type": ["null", "string"]
+    },
+    "video_owner_id": {
+      "type": ["null", "string"]
+    },
+    "media_key": {
+      "type": ["null", "string"]
+    },
+    "id": {
+      "type": ["null", "string"]
+    },
+    "created_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "card_uri": {
+      "type": ["null", "string"]
+    },
+    "updated_at": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "poster_media_url": {
+      "type": ["null", "string"]
+    },
+    "deleted": {
+      "type": ["null", "boolean"]
+    },
+    "card_type": {
+      "type": ["null", "string"]
+    }
+  }
+}

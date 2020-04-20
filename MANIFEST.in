@@ -1,0 +1,4 @@
+include LICENSE
+include tap_twitter-ads/schemas/*.json
+include tap_twitter-ads/schemas/shared/*.json
+

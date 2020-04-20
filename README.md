@@ -57,7 +57,7 @@ This tap:
 
 - Extracts Asyncronous Reports using:
   - Supports many reports, each with Report Config Settings:
-    - **Entity**: 7 Entitie Types
+    - **Entity**: 7 Entity Types
     - **Segment**: 20 Segmentation Types
     - **Granularity**: DAY, HOUR, or TOTAL
   - [Metrics and Segmentation Rules](https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation)

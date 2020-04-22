@@ -5,30 +5,6 @@
     "__sdc_dimensions_hash_key": {
       "type": ["null", "string"]
     },
-    "account_id": {
-      "type": ["null", "string"]
-    },
-    "report_name": {
-      "type": ["null", "string"]
-    },
-    "entity": {
-      "type": ["null", "string"]
-    },
-    "entity_id": {
-      "type": ["null", "string"]
-    },
-    "granularity": {
-      "type": ["null", "string"]
-    },
-    "placement": {
-      "type": ["null", "string"]
-    },
-    "country": {
-      "type": ["null", "string"]
-    },
-    "platform": {
-      "type": ["null", "string"]
-    },
     "start_time": {
       "type": ["null", "string"],
       "format": "date-time"
@@ -37,31 +13,10 @@
       "type": ["null", "string"],
       "format": "date-time"
     },
-    "segmentation_type": {
-      "type": ["null", "string"]
+    "dimensions": { 
+      "$ref": "dimensions.json" 
     },
-    "segment_name": {
-      "type": ["null", "string"]
-    },
-    "segment_value": {
-      "type": ["null", "string"]
-    },
-    "engagements": {
-      "type": ["null", "integer"]
-    },
-    "conversion_purchases": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_signups": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_visits": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_downloads": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_custom": { 
+    "web_conversions": { 
       "$ref": "web_conversion.json" 
     }
   }

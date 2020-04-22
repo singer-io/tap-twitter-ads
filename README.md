@@ -202,83 +202,80 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     ```
     Check tap resulted in the following:
     ```bash
-        The output is valid.
-        It contained 225445 messages for 50 streams.
+      The output is valid.
+      It contained 872667 messages for 62 streams.
 
-            51 schema messages
-        225292 record messages
-            102 state messages
+          63 schema messages
+      872432 record messages
+          172 state messages
 
-        Details by stream:
-        +--------------------------------------------+---------+---------+
-        | stream                                     | records | schemas |
-        +--------------------------------------------+---------+---------+
-        | iab_categories                             | 15      | 1       |
-        | promoted_tweets                            | 2       | 1       |
-        | funding_instruments                        | 1       | 1       |
-        | accounts                                   | 1       | 1       |
-        | line_items                                 | 2       | 1       |
-        | content_categories                         | 392     | 1       |
-        | targeting_criteria                         | 10      | 1       |
-        | tweets                                     | 4       | 1       |
-        | bidding_rules                              | 64      | 1       |
-        | campaigns                                  | 2       | 1       |
-
-        | cards_video_direct_message                 | 0       | 1       |
-        | cards_video_app_download                   | 0       | 1       |
-        | cards_video_conversation                   | 0       | 1       |
-        | cards_video_website                        | 0       | 1       |
-        | cards_website                              | 0       | 1       |
-        | cards_image_direct_message                 | 0       | 1       |
-        | cards_image_conversation                   | 0       | 1       |
-        | cards_image_app_download                   | 0       | 1       |
-        | cards_poll                                 | 0       | 1       |
-        | tailored_audiences                         | 0       | 1       |
-        | preroll_call_to_actions                    | 0       | 1       |
-        | promotable_users                           | 0       | 1       |
-        | media_creatives                            | 0       | 1       |
-        | scheduled_promoted_tweets                  | 0       | 1       |
-        | account_media                              | 0       | 1       |
-        | line_item_apps                             | 0       | 1       |
-        | promoted_accounts                          | 0       | 1       |
-
-        | targeting_platforms                        | 4       | 1       |
-        | targeting_tv_markets                       | 39      | 1       |
-        | targeting_tv_shows                         | 3023    | 1       |
-        | targeting_languages                        | 21      | 1       |
-        | targeting_locations                        | 153350  | 1       |
-        | targeting_events                           | 355     | 1       |
-        | targeting_devices                          | 355     | 1       |
-        | targeting_app_store_categories             | 84      | 1       |
-        | targeting_conversations                    | 41117   | 1       |
-        | targeting_interests                        | 361     | 1       |
-        | targeting_network_operators                | 602     | 1       |
-        | targeting_platform_versions                | 38      | 1       |
-
-        | promoted_tweets_interests_daily_report     | 3210    | 1       |
-        | line_items_platform_versions_hourly_report | 3108    | 1       |
-        | organic_tweets_daily_report                | 104     | 2       |
-        | funding_instruments_age_daily_report       | 175     | 1       |
-        | organic_tweets_hourly_report               | 1104    | 1       |
-        | promoted_tweets_languages_daily_report     | 205     | 1       |
-        | line_items_daily_report                    | 10      | 1       |
-        | line_items_platforms_hourly_report         | 588     | 1       |
-        | campaigns_daily_report                     | 10      | 1       |
-        | campaigns_genders_hourly_report            | 504     | 1       |
-        | funding_instruments_hourly_report          | 84      | 1       |
-        | promoted_tweets_keywords_hourly_report     | 420     | 1       |
-        | promoted_tweets_daily_report               | 10      | 1       |
-        | line_items_regions_daily_report            | 630     | 1       |
-        | funding_instruments_devices_hourly_report  | 15288   | 1       |
-
-        | media_creatives_daily_report               | 0       | 1       |
-        | accounts_metros_hourly_report              | 0       | 1       |
-        | accounts_daily_report                      | 0       | 1       |
-        | accounts_conversion_tags_hourly_report     | 0       | 1       |
-        | line_items_conversion_tags_hourly_report   | 0       | 1       |
-        | campaigns_conversion_tags_daily_report     | 0       | 1       |
-        | promoted_accounts_daily_report             | 0       | 1       |
-        +--------------------------------------------+---------+---------+
+      Details by stream:
+      +--------------------------------------------+---------+---------+
+      | stream                                     | records | schemas |
+      +--------------------------------------------+---------+---------+
+      | account_media                              | 0       | 1       |
+      | accounts                                   | 1       | 1       |
+      | accounts_conversion_tags_hourly_report     | 0       | 1       |
+      | accounts_daily_report                      | 87      | 1       |
+      | accounts_metros_hourly_report              | 226240  | 1       |
+      | advertiser_business_categories             | 16      | 1       |
+      | bidding_rules                              | 64      | 1       |
+      | campaigns                                  | 2       | 1       |
+      | campaigns_conversion_tags_daily_report     | 0       | 1       |
+      | campaigns_daily_report                     | 10      | 1       |
+      | campaigns_genders_hourly_report            | 504     | 1       |
+      | cards_image_app_download                   | 0       | 1       |
+      | cards_image_conversation                   | 0       | 1       |
+      | cards_image_direct_message                 | 0       | 1       |
+      | cards_poll                                 | 0       | 1       |
+      | cards_video_app_download                   | 0       | 1       |
+      | cards_video_conversation                   | 0       | 1       |
+      | cards_video_direct_message                 | 0       | 1       |
+      | cards_video_website                        | 0       | 1       |
+      | cards_website                              | 0       | 1       |
+      | content_categories                         | 392     | 1       |
+      | funding_instruments                        | 1       | 1       |
+      | funding_instruments_age_daily_report       | 175     | 1       |
+      | funding_instruments_devices_hourly_report  | 15288   | 1       |
+      | funding_instruments_hourly_report          | 84      | 1       |
+      | iab_categories                             | 15      | 1       |
+      | line_item_apps                             | 0       | 1       |
+      | line_items                                 | 2       | 1       |
+      | line_items_conversion_tags_hourly_report   | 0       | 1       |
+      | line_items_daily_report                    | 10      | 1       |
+      | line_items_platform_versions_hourly_report | 3108    | 1       |
+      | line_items_platforms_hourly_report         | 588     | 1       |
+      | line_items_regions_daily_report            | 630     | 1       |
+      | media_creatives                            | 0       | 1       |
+      | media_creatives_daily_report               | 0       | 1       |
+      | organic_tweets_daily_report                | 82      | 2       |
+      | organic_tweets_hourly_report               | 1344    | 1       |
+      | preroll_call_to_actions                    | 0       | 1       |
+      | promotable_users                           | 0       | 1       |
+      | promoted_accounts                          | 0       | 1       |
+      | promoted_accounts_daily_report             | 0       | 1       |
+      | promoted_tweets                            | 2       | 1       |
+      | promoted_tweets_daily_report               | 10      | 1       |
+      | promoted_tweets_interests_daily_report     | 3210    | 1       |
+      | promoted_tweets_keywords_hourly_report     | 420     | 1       |
+      | promoted_tweets_languages_daily_report     | 205     | 1       |
+      | scheduled_promoted_tweets                  | 0       | 1       |
+      | tailored_audiences                         | 0       | 1       |
+      | targeting_app_store_categories             | 84      | 1       |
+      | targeting_conversations                    | 41136   | 1       |
+      | targeting_criteria                         | 10      | 1       |
+      | targeting_devices                          | 355     | 1       |
+      | targeting_events                           | 355     | 1       |
+      | targeting_interests                        | 361     | 1       |
+      | targeting_languages                        | 21      | 1       |
+      | targeting_locations                        | 56682   | 1       |
+      | targeting_network_operators                | 161     | 1       |
+      | targeting_platform_versions                | 38      | 1       |
+      | targeting_platforms                        | 4       | 1       |
+      | targeting_tv_markets                       | 39      | 1       |
+      | targeting_tv_shows                         | 520694  | 1       |
+      | tweets                                     | 2       | 1       |
+      +--------------------------------------------+---------+---------+
 
     ```
 ---

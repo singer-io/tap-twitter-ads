@@ -5,30 +5,6 @@
     "__sdc_dimensions_hash_key": {
       "type": ["null", "string"]
     },
-    "account_id": {
-      "type": ["null", "string"]
-    },
-    "report_name": {
-      "type": ["null", "string"]
-    },
-    "entity": {
-      "type": ["null", "string"]
-    },
-    "entity_id": {
-      "type": ["null", "string"]
-    },
-    "granularity": {
-      "type": ["null", "string"]
-    },
-    "placement": {
-      "type": ["null", "string"]
-    },
-    "country": {
-      "type": ["null", "string"]
-    },
-    "platform": {
-      "type": ["null", "string"]
-    },
     "start_time": {
       "type": ["null", "string"],
       "format": "date-time"
@@ -37,157 +13,25 @@
       "type": ["null", "string"],
       "format": "date-time"
     },
-    "segmentation_type": {
-      "type": ["null", "string"]
+    "dimensions": { 
+      "$ref": "dimensions.json" 
     },
-    "segment_name": {
-      "type": ["null", "string"]
+    "engagement": { 
+      "$ref": "engagement_all.json" 
     },
-    "segment_value": {
-      "type": ["null", "string"]
+    "billing": { 
+      "$ref": "billing.json" 
     },
-    "engagements": {
-      "type": ["null", "integer"]
+    "video": { 
+      "$ref": "video.json" 
     },
-    "impressions": {
-      "type": ["null", "integer"]
+    "media": { 
+      "$ref": "media.json" 
     },
-    "retweets": {
-      "type": ["null", "integer"]
-    },
-    "replies": {
-      "type": ["null", "integer"]
-    },
-    "likes": {
-      "type": ["null", "integer"]
-    },
-    "follows": {
-      "type": ["null", "integer"]
-    },
-    "card_engagements": {
-      "type": ["null", "integer"]
-    },
-    "clicks": {
-      "type": ["null", "integer"]
-    },
-    "app_clicks": {
-      "type": ["null", "integer"]
-    },
-    "url_clicks": {
-      "type": ["null", "integer"]
-    },
-    "qualified_impressions": {
-      "type": ["null", "integer"]
-    },
-    "billed_engagements": {
-      "type": ["null", "integer"]
-    },
-    "billed_charge_local_micro": {
-      "type": ["null", "integer"]
-    },
-    "video_total_views": {
-      "type": ["null", "integer"]
-    },
-    "video_views_25": {
-      "type": ["null", "integer"]
-    },
-    "video_views_50": {
-      "type": ["null", "integer"]
-    },
-    "video_views_75": {
-      "type": ["null", "integer"]
-    },
-    "video_views_100": {
-      "type": ["null", "integer"]
-    },
-    "video_cta_clicks": {
-      "type": ["null", "integer"]
-    },
-    "video_content_starts": {
-      "type": ["null", "integer"]
-    },
-    "video_mrc_views": {
-      "type": ["null", "integer"]
-    },
-    "video_3s100pct_views": {
-      "type": ["null", "integer"]
-    },
-    "video_6s_views": {
-      "type": ["null", "integer"]
-    },
-    "media_views": {
-      "type": ["null", "integer"]
-    },
-    "media_engagements": {
-      "type": ["null", "integer"]
-    },
-    "conversion_purchases": { 
+    "web_conversion": { 
       "$ref": "web_conversion.json" 
     },
-    "conversion_signups": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_visits": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_downloads": { 
-      "$ref": "web_conversion.json" 
-    },
-    "conversion_site_custom": { 
-      "$ref": "web_conversion.json" 
-    },
-    "mobile_conversion_spent_credits": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_installs": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_content_views": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_add_to_wishlists": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_checkouts_initiated": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_reservations": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_tutorials_completed": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_achievements_unlocked": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_searches": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_add_to_carts": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_payment_info_additions": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_shares": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_rates": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_logins": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_updates": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_levels_achieved": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_invites": { 
-      "$ref": "mobile_conversion.json" 
-    },
-    "mobile_conversion_key_page_views": { 
+    "mobile_conversion": { 
       "$ref": "mobile_conversion.json" 
     }
   }

@@ -116,7 +116,8 @@ def get_schemas(reports):
         report_segment = report.get('segment')
         report_granularity = report.get('granularity')
 
-        # Validate parameters
+        # Metrics & Segmentation: https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation
+        # Google Sheet summary: https://docs.google.com/spreadsheets/d/1Cn3B1TPZOjg9QhnnF44Myrs3W8hNOSyFRH6qn8SCc7E/edit?usp=sharing
         err = None
         running_error = ''
         if report_entity not in ENTITY_TYPES:
@@ -129,17 +130,20 @@ def get_schemas(reports):
             err = 'Report: {}, Granularity: {}: INVALID GRANULARITY'.format(
                 report_name, report_granularity)
             running_error = '{}; {}'.format(running_error, err)
+
         if report_entity in ('MEDIA_CREATIVE', 'ORGANIC_TWEET') and \
             not report_segment == 'NO_SEGMENT':
             err = 'Report: {}, Segment: {}, SEGMENTATION NOT ALLOWED for Entity: {}'.format(
                 report_name, report_segment, report_entity)
             running_error = '{}; {}'.format(running_error, err)
+
         # Undocumented rule: CONVERSION_TAGS report segment only allowed for certain entities
         if report_segment == 'CONVERSION_TAGS' and report_entity in \
             ['FUNDING_INSTRUMENT', 'PROMOTED_ACCOUNT']: # 'ACCOUNT',
             err = 'Report: {}, Entity: {}, Segment: CONVERSION_TAGS, INVALID COMBINATION'.format(
                 report_name, report_entity)
             running_error = '{}; {}'.format(running_error, err)
+
         # Undocumented rule: LANGUAGES report segment only allowed for certain report_entities
         if report_segment == 'LANGUAGES' and report_entity in \
             ['ACCOUNT', 'FUNDING_INSTRUMENT', 'MEDIA_CREATIVE']:
@@ -155,7 +159,7 @@ def get_schemas(reports):
             ['ACCOUNT', 'CAMPAIGN', 'LINE_ITEM', 'PROMOTED_TWEET']:
             report_path = get_abs_path('schemas/shared/report_web_conversion.json')
 
-        # ACCOUNT, FUNDING_INSTRUMENT, ORGANIC_TWEET permit a subset of METRIC_GROUPS
+        # ACCOUNT, FUNDING_INSTRUMENT, ORGANIC_TWEET only permit a subset of METRIC_GROUPS
         elif report_entity in ('ACCOUNT', 'FUNDING_INSTRUMENT', 'ORGANIC_TWEET'):
             report_path = get_abs_path('schemas/shared/report_{}.json'.format(
                 report_entity.lower()))
@@ -170,18 +174,15 @@ def get_schemas(reports):
 
         # If NO_SEGMENT, then remove Segment fields
         if report_segment == 'NO_SEGMENT':
-            schema['properties'].pop('segmentation_type', None)
-            schema['properties'].pop('segment_name', None)
-            schema['properties'].pop('segment_value', None)
+            schema['properties']['dimensions'].pop('segmentation_type', None)
+            schema['properties']['dimensions'].pop('segment_name', None)
+            schema['properties']['dimensions'].pop('segment_value', None)
+
         # Web Conversion ONLY valid for NO_SEGMENT, PLATFORM, and CONVERSION_TAGS segment
         # Reference: https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation#WEB_CONVERSION
         #   Docs ^^ say 'PLATFORMS Only' Segmentation; but CONVERSION_TAGS segment only allow WEB_CONVERSION metrics
-        elif report_segment not in ('PLATFORMS', 'CONVERSION_TAGS'):
-            schema['properties'].pop('conversion_purchases', None)
-            schema['properties'].pop('conversion_signups', None)
-            schema['properties'].pop('conversion_site_visits', None)
-            schema['properties'].pop('conversion_site_downloads', None)
-            schema['properties'].pop('conversion_site_custom', None)
+        if report_segment not in ('NO_SEGMENT', 'PLATFORMS', 'CONVERSION_TAGS'):
+            schema['properties'].pop('web_conversion', None)
 
         schemas[report_name] = schema
         mdata = metadata.new()

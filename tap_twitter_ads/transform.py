@@ -73,7 +73,7 @@ def transform_report(report_name, report_data, account_id):
                     segment_name = segment.get('segment_name')
                     segment_value = segment.get('segment_value')
 
-                record = {
+                dimensions = {
                     'report_name': report_name,
                     'account_id': account_id,
                     'entity': entity,
@@ -90,18 +90,41 @@ def transform_report(report_name, report_data, account_id):
                 }
 
                 # Create MD5 hash key of sorted json dimesions (above)
-                dims_md5 = str(hash_data(json.dumps(record, sort_keys=True)))
-                record['__sdc_dimensions_hash_key'] = dims_md5
+                dims_md5 = str(hash_data(json.dumps(dimensions, sort_keys=True)))
+                record = {
+                    '__sdc_dimensions_hash_key': dims_md5,
+                    'start_time': series_start,
+                    'end_time': series_end,
+                    'dimensions': dimensions
+                }
+
                 # LOGGER.info('dimensions_hash_key = {}'.format(dims_md5)) # COMMENT OUT
 
                 # Get time interval value from metrics value arrays
                 metrics = datum.get('metrics', {})
                 for key, val in list(metrics.items()):
+                    # Determine nested object group for each measure
+                    if key[0:7] == 'billed_':
+                        group = 'billing'
+                    elif key[0:6] == 'media_':
+                        group = 'media'
+                    elif key[0:6] == 'video_':
+                        group = 'video'
+                    elif key[0:11] == 'conversion_':
+                        group = 'web_conversion'
+                    elif key[0:18] == 'mobile_conversion_':
+                        group = 'mobile_conversion'
+                    else:
+                        group = 'engagement'
+                    # Create group node if not exists
+                    if not record.get(group):
+                        record[group] = {}
+
                     if isinstance(val, list):
                         index_val = None
                         try:
                             index_val = val[i]
-                            record[key] = index_val
+                            record[group][key] = index_val
                             append_record = True
                         except IndexError:
                             index_val = None
@@ -117,7 +140,7 @@ def transform_report(report_name, report_data, account_id):
                                 except IndexError:
                                     idx_val = None
                         if new_dict != {}:
-                            record[key] = new_dict
+                            record[group][key] = new_dict
                     # End for key, val in metrics
 
                 # LOGGER.info('record = {}'.format(record)) # COMMENT OUT

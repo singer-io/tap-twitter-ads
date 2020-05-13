@@ -111,7 +111,7 @@ def get_schemas(reports):
 
     # JSON schemas for each report
     for report in reports:
-        report_name = report.get('report_name')
+        report_name = report.get('name')
         report_entity = report.get('entity')
         report_segment = report.get('segment')
         report_granularity = report.get('granularity')

@@ -12,11 +12,6 @@ jobs:
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
             pip install -U 'pip<19.2' setuptools
             pip install .[dev]
-      - run:
-          name: 'Unit Tests'
-          command: |
-            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
-            nosetests tests/unittests
       - add_ssh_keys
       - run:
           name: 'Integration Tests'

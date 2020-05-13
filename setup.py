@@ -14,6 +14,13 @@ setup(name='tap-twitter-ads',
           'singer-python==5.9.0',
           'twitter-ads==7.0.0'
       ],
+      extras_require={
+          'dev': [
+              'pylint',
+              'ipdb',
+              'nose',
+          ]
+      },
       entry_points='''
           [console_scripts]
           tap-twitter-ads=tap_twitter_ads:main

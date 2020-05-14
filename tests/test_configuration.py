@@ -59,10 +59,7 @@ def config():
             "targeting_platform_versions": {"targeting_value"},
             "targeting_platforms": {"targeting_value"},
             "targeting_tv_markets": {"locale"},
-            "tweets": {"id"},
-            # "accounts_daily_report": {},
-            # "accounts_conversion_tags_hourly_report": {},
-            # "campaigns_daily_report": {}
+            "tweets": {"id"}
         },
         "exclude_streams": ["accounts",
                             "accounts_conversion_tags_hourly_report",

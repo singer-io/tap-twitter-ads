@@ -12,7 +12,6 @@ import tap_tester.connections as connections
 
 configuration = config()
 
-
 class TestSyncNonReportStreams(unittest.TestCase):
     """ Test the non-report streams """
 

@@ -42,26 +42,26 @@ class TestSyncNonReportStreams(unittest.TestCase):
         for prop in props:
             properties_dict[prop] = os.getenv(props[prop])
 
-        # properties_dict['reports'] = [
-        #     {
-        #         "name": "accounts_daily_report",
-        #         "entity": "ACCOUNT",
-        #         "segment": "NO_SEGMENT",
-        #         "granularity": "DAY"
-        #     },
-        #     {
-        #         "name": "accounts_conversion_tags_hourly_report",
-        #         "entity": "ACCOUNT",
-        #         "segment": "CONVERSION_TAGS",
-        #         "granularity": "HOUR"
-        #     },
-        #     {
-        #         "name": "campaigns_daily_report",
-        #         "entity": "CAMPAIGN",
-        #         "segment": "NO_SEGMENT",
-        #         "granularity": "DAY"
-        #     }
-        # ]
+        properties_dict['reports'] = [
+            {
+                "name": "accounts_daily_report",
+                "entity": "ACCOUNT",
+                "segment": "NO_SEGMENT",
+                "granularity": "DAY"
+            },
+            {
+                "name": "accounts_conversion_tags_hourly_report",
+                "entity": "ACCOUNT",
+                "segment": "CONVERSION_TAGS",
+                "granularity": "HOUR"
+            },
+            {
+                "name": "campaigns_daily_report",
+                "entity": "CAMPAIGN",
+                "segment": "NO_SEGMENT",
+                "granularity": "DAY"
+            }
+        ]
 
         return properties_dict
 

@@ -1031,7 +1031,7 @@ def sync(client, config, catalog, state):
     # Get list of report streams to sync (from config and catalog)
     report_streams = []
     for report in reports:
-        report_name = report.get('report_name')
+        report_name = report.get('name')
         if report_name in selected_streams:
             report_streams.append(report_name)
     LOGGER.info('Sync Report Streams: {}'.format(report_streams))
@@ -1103,7 +1103,7 @@ def sync(client, config, catalog, state):
 
         # REPORT STREAMS LOOP
         for report in reports:
-            report_name = report.get('report_name')
+            report_name = report.get('name')
             if report_name in report_streams:
                 update_currently_syncing(state, report_name)
 

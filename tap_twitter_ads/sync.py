@@ -209,6 +209,8 @@ def sync_endpoint(client,
 
     # Bookmark datetimes
     last_datetime = get_bookmark(state, stream_name, start_date)
+    if not last_datetime or last_datetime is None:
+        last_datetime = start_date
     last_dttm = strptime_to_utc(last_datetime)
 
     # NOTE: Risk of syncing indefinitely and never getting bookmark

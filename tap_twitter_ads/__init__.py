@@ -36,18 +36,20 @@ def main():
     config = parsed_args.config
 
     # Twitter Ads SDK Reference: https://github.com/twitterdev/twitter-python-ads-sdk
+    # Client reference: https://github.com/twitterdev/twitter-python-ads-sdk#rate-limit-handling-and-request-options
     client = Client(
         consumer_key=config.get('consumer_key'),
         consumer_secret=config.get('consumer_secret'),
         access_token=config.get('access_token'),
         access_token_secret=config.get('access_token_secret'),
         options={
-            'handle_rate_limit': True,
-            'retry_max': 3,
-            'retry_delay': 5000,
-            'retry_on_status': [404, 500, 503],
+            'handle_rate_limit': True, # Handles 429 errors
+            'retry_max': 10,
+            'retry_delay': 60000, # milliseconds, wait 1 minute for each retry
+            # Error codes: https://developer.twitter.com/en/docs/basics/response-codes
+            'retry_on_status': [400, 420, 500, 502, 503, 504],
             'retry_on_timeouts': True,
-            'timeout': (1.0, 3.0)})
+            'timeout': (5.0, 10.0)}) # Tuple: (connect, read) timeout in seconds
 
     state = {}
     if parsed_args.state:

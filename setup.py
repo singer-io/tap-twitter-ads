@@ -3,7 +3,7 @@
 from setuptools import setup, find_packages
 
 setup(name='tap-twitter-ads',
-      version='0.0.3',
+      version='0.0.4',
       description='Singer.io tap for extracting data from the Twitter Ads API API',
       author='jeff.huth@bytecode.io',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
@@ -29,6 +29,7 @@ setup(name='tap-twitter-ads',
       package_data={
           'tap_twitter_ads': [
               'schemas/*.json',
-              'schemas/shared/*.json'
+              'schemas/shared/*.json',
+              'tests/*.py'
           ]
       })

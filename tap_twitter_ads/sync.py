@@ -658,7 +658,7 @@ def get_async_results_urls(client, account_id, report_name, queued_job_ids):
     while len(queued_job_ids) > 0 and jobs_still_running and j <= 20:
         # Wait 15 sec for async reports to finish
         wait_sec = 15
-        LOGGER.info('Report: {} - Waiting {} sec for async job to finish'.format(
+        LOGGER.info('Report: {} - Waiting {} sec for async job(s) to finish'.format(
             report_name, wait_sec))
         time.sleep(wait_sec)
 
@@ -772,11 +772,10 @@ def sync_report(client,
     if window_end > abs_end:
         window_end = abs_end
 
-    entity_id_sets = []
-    entity_ids = []
     # DATE WINDOW LOOP
     while window_start != abs_end:
-        window_entity_id_sets = []
+        entity_id_sets = []
+        entity_ids = []
         window_start_rounded, window_end_rounded = round_times(
             report_granularity, timezone, window_start, window_end)
         window_start_str = window_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
@@ -788,7 +787,7 @@ def sync_report(client,
         # ACCOUNT cannot use active_entities endpoint; but single Account ID
         if report_entity == 'ACCOUNT':
             entity_ids.append(account_id)
-            window_entity_id_sets = [
+            entity_id_sets = [
                 {
                     'placement': 'ALL_ON_TWITTER',
                     'entity_ids': entity_ids,
@@ -813,7 +812,7 @@ def sync_report(client,
                 'start_time': window_start_str,
                 'end_time': window_end_str
             }
-            window_entity_id_sets.append(entity_id_set)
+            entity_id_sets.append(entity_id_set)
 
         # ALL OTHER entity types use active_entities endpoint
         else:
@@ -836,8 +835,7 @@ def sync_report(client,
                 active_entities_params)
 
             # Get active entity_ids, start, end for each placement type for date window
-            window_entity_id_sets = []
-            window_entity_id_sets = get_active_entity_sets(active_entities,
+            entity_id_sets = get_active_entity_sets(active_entities,
                                                            report_name,
                                                            account_id,
                                                            report_entity,
@@ -847,8 +845,131 @@ def sync_report(client,
                                                            window_end)
             # End: else (active_entities)
 
-        # Append window_entity_id_sets to entity_id_sets
-        entity_id_sets = entity_id_sets + window_entity_id_sets
+        LOGGER.info('entity_id_sets = {}'.format(entity_id_sets)) # COMMENT OUT
+
+        # ASYNC report POST requests
+        # Get metric_groups for report_entity and report_egment
+        metric_groups = get_entity_metric_groups(report_entity, report_segment)
+
+        # Set sub_type and sub_type_ids for sub_type loop
+        if report_segment in ('LOCATIONS', 'METROS', 'POSTAL_CODES', 'REGIONS'):
+            sub_type = 'countries'
+            sub_type_ids = country_ids
+        elif report_segment in ('DEVICES', 'PLATFORM_VERSIONS'):
+            sub_type = 'platforms'
+            sub_type_ids = platform_ids
+        else: # NO sub_type (loop once thru sub_type loop)
+            sub_type = 'none'
+            sub_type_ids = ['none']
+
+        # POST ALL Queued ASYNC Jobs for Report
+        queued_job_ids = []
+        # SUB_TYPE LOOP
+        # Countries or Platforms loop (or single loop for sub_types = ['none'])
+        for sub_type_id in sub_type_ids:
+            sub_type_queued_job_ids = []
+            if sub_type == 'platforms':
+                country_id = None
+                platform_id = sub_type_id
+            elif sub_type == 'countries':
+                country_id = sub_type_id
+                platform_id = None
+            else:
+                country_id = None
+                platform_id = None
+
+            # ENTITY ID SET LOOP
+            for entity_id_set in entity_id_sets:
+                entity_id_set_queued_job_ids = []
+                LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
+                placement = entity_id_set.get('placement')
+                entity_ids = entity_id_set.get('entity_ids', [])
+                start_time = entity_id_set.get('start_time')
+                end_time = entity_id_set.get('end_time')
+                LOGGER.info('Report: {} - placement: {}, start_time: {}, end_time: {}'.format(
+                    report_name, placement, start_time, end_time))
+
+                # POST ASYNC JOBS for ENTITY ID SET (possibly many chunks)
+                entity_id_set_queued_job_ids = post_queued_async_jobs(client,
+                                                                    account_id,
+                                                                    report_name,
+                                                                    report_entity,
+                                                                    entity_ids,
+                                                                    report_granularity,
+                                                                    report_segment,
+                                                                    metric_groups,
+                                                                    placement,
+                                                                    start_time,
+                                                                    end_time,
+                                                                    country_id,
+                                                                    platform_id)
+                sub_type_queued_job_ids = sub_type_queued_job_ids + entity_id_set_queued_job_ids
+                # End: for entity_id_set in entity_id_sets
+            
+            queued_job_ids = queued_job_ids + sub_type_queued_job_ids
+            # End: for sub_type_id in sub_type_ids
+
+        # WHILE JOBS STILL RUNNING LOOP, GET ASYNC JOB STATUS
+        # GET ASYNC Status Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#get-stats-jobs-accounts-account-id 
+        async_results_urls = []
+        async_results_urls = get_async_results_urls(client, account_id, report_name, queued_job_ids)
+        LOGGER.info('async_results_urls = {}'.format(async_results_urls)) # COMMENT OUT
+
+        # Get stream_metadata from catalog (for Transformer masking and validation below)
+        stream = catalog.get_stream(report_name)
+        schema = stream.schema.to_dict()
+        stream_metadata = metadata.to_map(stream.metadata)
+        
+        # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
+        # RISK: What if some reports error or don't finish?
+        # Possibly move this code block withing ASYNC Status Check
+        total_records = 0
+        for async_results_url in async_results_urls:
+            
+            # GET DOWNLOAD DATA FROM URL
+            LOGGER.info('Report: {} - GET async data from URL: {}'.format(
+                report_name, async_results_url))
+            async_data = get_async_data(report_name, client, async_results_url)
+            # LOGGER.info('async_data = {}'.format(async_data)) # COMMENT OUT
+
+            # time_extracted: datetime when the data was extracted from the API
+            time_extracted = utils.now()
+
+            # TRANSFORM REPORT DATA
+            transformed_data = []
+            transformed_data = transform_report(report_name, async_data, account_id)
+            # LOGGER.info('transformed_data = {}'.format(transformed_data)) # COMMENT OUT
+            if transformed_data is None or transformed_data == []:
+                LOGGER.info('Report: {} - NO TRANSFORMED DATA for URL: {}'.format(
+                    report_name, async_results_url))
+
+            # PROCESS RESULTS TO TARGET RECORDS
+            with metrics.record_counter(report_name) as counter:
+                for record in transformed_data:
+                    # Transform record with Singer Transformer
+
+                    # Evalueate max_bookmark_value
+                    end_time = record.get('end_time') # String
+                    end_dttm = strptime_to_utc(end_time) # Datetime
+                    max_bookmark_dttm = strptime_to_utc(max_bookmark_value) # Datetime
+                    if end_dttm > max_bookmark_dttm: # Datetime comparison
+                        max_bookmark_value = end_time # String
+
+                    with Transformer() as transformer:
+                        transformed_record = transformer.transform(
+                            record,
+                            schema,
+                            stream_metadata)
+
+                        write_record(report_name, transformed_record, time_extracted=time_extracted)
+                        counter.increment()
+
+            # Increment total_records
+            total_records = total_records + counter.value
+            # End: for async_results_url in async_results_urls
+
+        # Update the state with the max_bookmark_value for the date window
+        write_bookmark(state, report_name, max_bookmark_value)
 
         # Increment date window
         window_start = window_end
@@ -856,132 +977,6 @@ def sync_report(client,
         if window_end > abs_end:
             window_end = abs_end
         # End: date window
-
-    LOGGER.info('entity_id_sets = {}'.format(entity_id_sets)) # COMMENT OUT
-
-    # ASYNC report POST requests
-    # Get metric_groups for report_entity and report_egment
-    metric_groups = get_entity_metric_groups(report_entity, report_segment)
-
-    # Set sub_type and sub_type_ids for sub_type loop
-    if report_segment in ('LOCATIONS', 'METROS', 'POSTAL_CODES', 'REGIONS'):
-        sub_type = 'countries'
-        sub_type_ids = country_ids
-    elif report_segment in ('DEVICES', 'PLATFORM_VERSIONS'):
-        sub_type = 'platforms'
-        sub_type_ids = platform_ids
-    else: # NO sub_type (loop once thru sub_type loop)
-        sub_type = 'none'
-        sub_type_ids = ['none']
-
-    # POST ALL Queued ASYNC Jobs for Report
-    queued_job_ids = []
-    # SUB_TYPE LOOP
-    # Countries or Platforms loop (or single loop for sub_types = ['none'])
-    for sub_type_id in sub_type_ids:
-        sub_type_queued_job_ids = []
-        if sub_type == 'platforms':
-            country_id = None
-            platform_id = sub_type_id
-        elif sub_type == 'countries':
-            country_id = sub_type_id
-            platform_id = None
-        else:
-            country_id = None
-            platform_id = None
-
-        # ENTITY ID SET LOOP
-        for entity_id_set in entity_id_sets:
-            entity_id_set_queued_job_ids = []
-            LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
-            placement = entity_id_set.get('placement')
-            entity_ids = entity_id_set.get('entity_ids', [])
-            start_time = entity_id_set.get('start_time')
-            end_time = entity_id_set.get('end_time')
-            LOGGER.info('Report: {} - placement: {}, start_time: {}, end_time: {}'.format(
-                report_name, placement, start_time, end_time))
-
-            # POST ASYNC JOBS for ENTITY ID SET (possibly many chunks)
-            entity_id_set_queued_job_ids = post_queued_async_jobs(client,
-                                                                  account_id,
-                                                                  report_name,
-                                                                  report_entity,
-                                                                  entity_ids,
-                                                                  report_granularity,
-                                                                  report_segment,
-                                                                  metric_groups,
-                                                                  placement,
-                                                                  start_time,
-                                                                  end_time,
-                                                                  country_id,
-                                                                  platform_id)
-            sub_type_queued_job_ids = sub_type_queued_job_ids + entity_id_set_queued_job_ids
-            # End: for entity_id_set in entity_id_sets
-        
-        queued_job_ids = queued_job_ids + sub_type_queued_job_ids
-        # End: for sub_type_id in sub_type_ids
-
-    # WHILE JOBS STILL RUNNING LOOP, GET ASYNC JOB STATUS
-    # GET ASYNC Status Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#get-stats-jobs-accounts-account-id 
-    async_results_urls = []
-    async_results_urls = get_async_results_urls(client, account_id, report_name, queued_job_ids)
-    LOGGER.info('async_results_urls = {}'.format(async_results_urls)) # COMMENT OUT
-
-    # Get stream_metadata from catalog (for Transformer masking and validation below)
-    stream = catalog.get_stream(report_name)
-    schema = stream.schema.to_dict()
-    stream_metadata = metadata.to_map(stream.metadata)
-    
-    # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
-    # RISK: What if some reports error or don't finish?
-    # Possibly move this code block withing ASYNC Status Check
-    total_records = 0
-    for async_results_url in async_results_urls:
-        
-        # GET DOWNLOAD DATA FROM URL
-        LOGGER.info('Report: {} - GET async data from URL: {}'.format(
-            report_name, async_results_url))
-        async_data = get_async_data(report_name, client, async_results_url)
-        # LOGGER.info('async_data = {}'.format(async_data)) # COMMENT OUT
-
-        # time_extracted: datetime when the data was extracted from the API
-        time_extracted = utils.now()
-
-        # TRANSFORM REPORT DATA
-        transformed_data = []
-        transformed_data = transform_report(report_name, async_data, account_id)
-        # LOGGER.info('transformed_data = {}'.format(transformed_data)) # COMMENT OUT
-        if transformed_data is None or transformed_data == []:
-            LOGGER.info('Report: {} - NO TRANSFORMED DATA for URL: {}'.format(
-                report_name, async_results_url))
-
-        # PROCESS RESULTS TO TARGET RECORDS
-        with metrics.record_counter(report_name) as counter:
-            for record in transformed_data:
-                # Transform record with Singer Transformer
-
-                # Evalueate max_bookmark_value
-                end_time = record.get('end_time') # String
-                end_dttm = strptime_to_utc(end_time) # Datetime
-                max_bookmark_dttm = strptime_to_utc(max_bookmark_value) # Datetime
-                if end_dttm > max_bookmark_dttm: # Datetime comparison
-                    max_bookmark_value = end_time # String
-
-                with Transformer() as transformer:
-                    transformed_record = transformer.transform(
-                        record,
-                        schema,
-                        stream_metadata)
-
-                    write_record(report_name, transformed_record, time_extracted=time_extracted)
-                    counter.increment()
-
-        # Increment total_records
-        total_records = total_records + counter.value
-        # End: for async_results_url in async_results_urls
-
-    # Update the state with the max_bookmark_value for the stream
-    write_bookmark(state, report_name, max_bookmark_value)
 
     return total_records
     # End sync_report

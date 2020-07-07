@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.4
+  * Change report bookmarking to bookmark after each date window; Improve client rate limiting, error handling, and timeout handling.
+
 ## 0.0.3
   * Fix intermittent `None` bookmark issue.
 

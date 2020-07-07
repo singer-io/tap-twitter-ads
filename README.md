@@ -8,6 +8,8 @@ This tap:
 
 - Pulls raw data from the [Twitter Ads API, version 7](https://developer.twitter.com/en/docs/ads/general/overview) using the [Twitter Ads Python SDK](https://github.com/twitterdev/twitter-python-ads-sdk).
 
+[Twitter Ads Tap: Sync Review](https://docs.google.com/document/d/1MrXWHGyOsCv-xI7ecuUWG0VIAy8ko5fwKn-I91p-PSc/edit?usp=sharing): Summary of tap sync process and looping
+
 [Twitter Ads Hierarchy and Terminology](https://developer.twitter.com/en/docs/tutorials/ads-api-hierarchy-terminology)
 ![Twitter Ads Hierarchy](https://cdn.cms-twdigitalassets.com/content/dam/developer-twitter/adsapi/adsapi-heirarchy.png.img.fullhd.medium.png)
 
@@ -57,9 +59,11 @@ This tap:
 
 - Extracts Asyncronous Reports using:
   - Supports many reports, each with Report Config Settings:
+    - **Name**: Name of report
     - **Entity**: 7 Entity Types
     - **Segment**: 20 Segmentation Types
     - **Granularity**: DAY, HOUR, or TOTAL
+  - [Twitter Ads Entity Segmentation Rules (Google Sheet)](https://docs.google.com/spreadsheets/d/1Cn3B1TPZOjg9QhnnF44Myrs3W8hNOSyFRH6qn8SCc7E/edit?usp=sharing)
   - [Metrics and Segmentation Rules](https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation)
   - [active_entities](https://developer.twitter.com/en/docs/ads/analytics/api-reference/active-entities)
   - [async_queued_jobs](https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#post-stats-jobs-accounts-account-id)

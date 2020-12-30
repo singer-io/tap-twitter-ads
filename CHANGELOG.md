@@ -1,7 +1,7 @@
 # Changelog
 
 ## 0.0.5
-  * Fix start/end datetime conversions to resolve daylight savings time error and entity start/end rounding errorsß.
+  * Fix start/end datetime conversions to resolve daylight savings time error and entity start/end rounding errors.
 ## 0.0.4
   * Change report bookmarking to bookmark after each date window; Improve client rate limiting, error handling, and timeout handling.
 

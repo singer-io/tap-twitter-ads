@@ -474,14 +474,14 @@ def round_times(report_granularity, timezone, start=None, end=None):
     # Round min_start, max_end to hours or dates
     if report_granularity == 'HOUR': # Round min_start/end to hour
         if start:
-            start_rounded = remove_minutes_local(start, timezone) - timedelta(hours=1)
+            start_rounded = remove_minutes_local(start - timedelta(hours=1), timezone)
         if end:
-            end_rounded = remove_minutes_local(end, timezone) + timedelta(hours=1)
+            end_rounded = remove_minutes_local(end + timedelta(hours=1), timezone)
     else: # DAY, TOTAL, Round min_start, max_end to date
         if start:
-            start_rounded = remove_hours_local(start, timezone) - timedelta(days=1)
+            start_rounded = remove_hours_local(start  - timedelta(days=1), timezone)
         if end:
-            end_rounded = remove_hours_local(end, timezone) + timedelta(days=1)
+            end_rounded = remove_hours_local(end + timedelta(days=1), timezone)
     return start_rounded, end_rounded
 
 
@@ -572,6 +572,19 @@ def get_active_entity_sets(active_entities, report_name, account_id, report_enti
         # Round min_start, max_end to hours or dates
         min_start_rounded, max_end_rounded = round_times(
             report_granularity, timezone, min_start, max_end)
+
+        # Adjust for window start/end
+        if min_start_rounded:
+            if min_start_rounded < window_start:
+                min_start_rounded = window_start
+        else:
+            min_start_rounded = window_start
+
+        if max_end_rounded:
+            if max_end_rounded > window_end:
+                max_end_rounded = window_end
+        else:
+            max_end_rounded = window_end
 
         if entity_ids != []:
             entity_id_set = {

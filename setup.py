@@ -12,7 +12,7 @@ setup(name='tap-twitter-ads',
           'backoff==1.8.0',
           'requests==2.23.0',
           'singer-python==5.9.0',
-          'twitter-ads==7.0.0'
+          'twitter-ads==8.0.0'
       ],
       extras_require={
           'dev': [

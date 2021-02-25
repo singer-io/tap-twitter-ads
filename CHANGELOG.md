@@ -1,7 +1,11 @@
 # Changelog
 
+## 0.0.6
+  * Update twitter-ads SDK to v8.0.0 [#11](https://github.com/singer-io/tap-twitter-ads/pull/11)
+
 ## 0.0.5
   * Fix start/end datetime conversions to resolve daylight savings time error and entity start/end rounding errors.
+
 ## 0.0.4
   * Change report bookmarking to bookmark after each date window; Improve client rate limiting, error handling, and timeout handling.
 

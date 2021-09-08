@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.0.7
+  * Update twitter-ads SDK to v9.0.1 [#13](https://github.com/singer-io/tap-twitter-ads/pull/13)
+
 ## 0.0.6
   * Update twitter-ads SDK to v8.0.0 [#11](https://github.com/singer-io/tap-twitter-ads/pull/11)
 

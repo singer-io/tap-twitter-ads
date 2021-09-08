@@ -264,19 +264,20 @@ STREAMS = {
         }
     },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/line-item-apps#line-item-apps
-    'line_item_apps': {
-        'path': 'accounts/{account_id}/line_item_apps',
-        'data_key': 'data',
-        'key_properties': ['id'],
-        'replication_method': 'INCREMENTAL',
-        'replication_keys': ['updated_at'],
-        'params': {
-            'sort_by': ['updated_at-desc'],
-            'with_deleted': '{with_deleted}',
-            'count': 1000,
-            'cursor': None
-        }
-    },
+    #   Endpoint and docs return a 404 - remove stream for now
+    # 'line_item_apps': {
+    #     'path': 'accounts/{account_id}/line_item_apps',
+    #     'data_key': 'data',
+    #     'key_properties': ['id'],
+    #     'replication_method': 'INCREMENTAL',
+    #     'replication_keys': ['updated_at'],
+    #     'params': {
+    #         'sort_by': ['updated_at-desc'],
+    #         'with_deleted': '{with_deleted}',
+    #         'count': 1000,
+    #         'cursor': None
+    #     }
+    # },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/media-creatives#media-creatives
     'media_creatives': {
         'path': 'accounts/{account_id}/media_creatives',
@@ -363,7 +364,7 @@ STREAMS = {
     },
     # Reference: https://developer.twitter.com/en/docs/ads/audiences/api-reference/tailored-audiences#tailored-audiences
     'tailored_audiences': {
-        'path': 'accounts/{account_id}/tailored_audiences',
+        'path': 'accounts/{account_id}/custom_audiences',
         'data_key': 'data',
         'key_properties': ['id'],
         'replication_method': 'INCREMENTAL',

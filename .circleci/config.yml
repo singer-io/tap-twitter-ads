@@ -12,7 +12,17 @@ jobs:
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
             pip install -U 'pip<19.2' 'setuptools<51.0.0'
             pip install .[dev]
+            pip install pytest-cov
+      - run:
+          name: 'Unit Tests'
+          command: |
+            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
+            python -m pytest --junitxml=junit/test-result.xml --cov=tap_twitter_ads --cov-report=html tests/unittests/
       - add_ssh_keys
+      - store_test_results:
+          path: test_output/report.xml
+      - store_artifacts:
+          path: htmlcov
       - run:
           name: 'Integration Tests'
           command: |

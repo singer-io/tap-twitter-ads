@@ -7,7 +7,8 @@ from twitter_ads.client import Client
 import singer
 from singer import metadata, utils
 from tap_twitter_ads.discover import discover
-from tap_twitter_ads.sync import sync
+from tap_twitter_ads.sync import sync as _sync
+from tap_twitter_ads.sync import get_resource
 
 
 LOGGER = singer.get_logger()
@@ -21,8 +22,9 @@ REQUIRED_CONFIG_KEYS = [
     'account_ids'
 ]
 
-def do_discover(reports):
+def do_discover(reports, client):
     LOGGER.info('Starting discover')
+    get_resource("test", client, 'accounts') # checking credentials for the discover mode
     catalog = discover(reports)
     json.dump(catalog.to_dict(), sys.stdout, indent=2)
     LOGGER.info('Finished discover')
@@ -60,9 +62,9 @@ def main():
     reports = config.get('reports', {})
 
     if parsed_args.discover:
-        do_discover(reports)
+        do_discover(reports, client)
     elif parsed_args.catalog:
-        sync(client=client,
+        _sync(client=client,
              config=config,
              catalog=catalog,
              state=state)

@@ -77,8 +77,7 @@ class TwitterAds(unittest.TestCase):
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
             "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
             "TAP_TWITTER_ADS_START_DATE",
-            "TAP_TWITTER_ADS_ACCOUNT_IDS",
-            ""
+            "TAP_TWITTER_ADS_ACCOUNT_IDS"
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
         if missing_envs:

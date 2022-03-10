@@ -105,7 +105,12 @@ class TwitterAds(unittest.TestCase):
         }
         return {
             'accounts': default_metadata,
-            #'account_media': default_metadata,
+            'account_media': default_metadata,
+            'bidding_rules': {
+                self.PRIMARY_KEYS: {"currency"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False
+            },
             "advertiser_business_categories": {
                 self.PRIMARY_KEYS: {"id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,

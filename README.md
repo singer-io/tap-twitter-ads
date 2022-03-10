@@ -117,6 +117,7 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     - `with_deleted`: true or false; specifies whether to include logically deleted records in the results.
     - `country_codes`: Comma-delimited list of ISO 2-letter country codes for targeting and segmenttation.
     - `reports`: Object array of specified reports with name, entity, segment, and granularity.
+    - `request_timeout`: To configure the read and connect timeout for twitter-ads client. Default is 300 seconds.
 
     ```json
     {
@@ -143,7 +144,8 @@ The process is described in [Obtaining Ads Account Credential](https://developer
             "segment": "REGIONS",
             "granularity": "DAY"
             }
-        ]
+        ],
+        "request_timeout": 300
     }
     ```
     

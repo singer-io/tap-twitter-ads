@@ -80,6 +80,17 @@ def resolve_schema_references(schema, refs):
         schema['properties']['$ref']
 
 
+def make_replication_key_automatic(mdata, schema, replication_keys):
+    mdata = metadata.to_map(mdata)
+
+    # Loop through all keys and make replication keys of automatic inclusion
+    for field_name in schema['properties'].keys():
+
+        if replication_keys and field_name in replication_keys:
+            mdata = metadata.write(mdata, ('properties', field_name), 'inclusion', 'automatic')
+
+    return metadata.to_list(mdata)
+
 def get_schemas(reports):
     schemas = {}
     field_metadata = {}
@@ -107,6 +118,9 @@ def get_schemas(reports):
             valid_replication_keys=stream_metadata.get('replication_keys', None),
             replication_method=stream_metadata.get('replication_method', None)
         )
+        # make replication keys of automatic inclusion
+        mdata = make_replication_key_automatic(mdata, schema, stream_metadata.get('replication_keys'))
+
         field_metadata[stream_name] = mdata
 
     # JSON schemas for each report
@@ -193,6 +207,10 @@ def get_schemas(reports):
             valid_replication_keys=['end_time'],
             replication_method='INCREMENTAL'
         )
+
+        # make replication keys of automatic inclusion
+        mdata = make_replication_key_automatic(mdata, schema, ['end_time'])
+
         field_metadata[report_name] = mdata
 
     return schemas, field_metadata

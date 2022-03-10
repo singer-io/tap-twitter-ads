@@ -87,7 +87,7 @@ def raise_for_error(exception):
     if exception.details:
         error_message = exception.details[0].get("message", ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error"))  
     else: 
-        ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error")
+        error_message = ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error")
 
     # get twitter-ads error code, message and prepare message
     message = "HTTP-error-code: {}, Message: {}".format(status_code, error_message)

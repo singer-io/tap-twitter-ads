@@ -56,7 +56,7 @@ def main():
             # Error codes: https://developer.twitter.com/en/docs/basics/response-codes
             'retry_on_status': [400, 420, 500, 502, 503, 504],
             'retry_on_timeouts': True,
-            'timeout': (request_timeout, request_timeout)}) # Tuple: (connect, read) timeout in seconds
+            'timeout': request_timeout}) # connect and read timeout in seconds
     state = {}
     if parsed_args.state:
         state = parsed_args.state

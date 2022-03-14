@@ -6,6 +6,7 @@ import pytz
 import singer
 from singer import metrics, metadata, Transformer, utils
 from singer.utils import strptime_to_utc
+import copy
 
 from twitter_ads import API_VERSION
 from twitter_ads.cursor import Cursor
@@ -262,6 +263,9 @@ def sync_endpoint(client,
         # API Call
         cursor = get_resource(stream_name, client, path, new_params)
 
+        # Cursor for children to retrieve parent_ids
+        cursor_child = copy.deepcopy(cursor)
+
         # time_extracted: datetime when the data was extracted from the API
         time_extracted = utils.now()
 
@@ -338,10 +342,6 @@ def sync_endpoint(client,
                     write_record(stream_name, transformed_record, time_extracted=time_extracted)
                     counter.increment()
 
-                # Append parent_id to parent_ids
-                parent_id = record_dict.get(parent_id_field)
-                parent_ids.append(parent_id)
-
                 # Increment counters
                 i = i + 1
                 total_records = total_records + 1
@@ -368,6 +368,63 @@ def sync_endpoint(client,
                     child_total_records = 0
                     # parent_id_limit: max list size for parent_ids
                     parent_id_limit = child_endpoint_config.get('parent_ids_limit', 1)
+
+                    # Bookmark for child stream
+                    child_last_datetime = get_bookmark(state, child_stream_name, start_date)
+                    if not child_last_datetime or child_last_datetime is None:
+                        child_last_datetime = start_date
+                    child_last_dttm = strptime_to_utc(child_last_datetime)
+
+                    child_max_bookmark_value = None
+                    j = 0
+                    # Loop thru cursor records, break out if no more data or child_bookmark_value < child_last_dttm
+                    for record in cursor_child:
+                        # Get dictionary for record
+                        record_dict = obj_to_dict(record)
+                        if not record_dict:
+                            # Finish looping
+                            LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
+                            break
+
+                        # Get record's bookmark_value
+                        # All bookmarked requests are sorted by updated_at descending
+                        #   'sort_by': ['updated_at-desc']
+                        # The first record is the max_bookmark_value
+                        if bookmark_field:
+                            bookmark_value_str = record_dict.get(bookmark_field)
+                            if bookmark_value_str:
+                                    child_bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
+                                    # If first record, set max_bookmark_value
+                                    if j == 0:
+                                        child_max_bookmark_dttm = child_bookmark_value
+                                        child_max_bookmark_value = child_max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                                        LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
+                                            stream_name, child_max_bookmark_value))
+                            else:
+                                # pylint: disable=line-too-long
+                                LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
+                                    child_stream_name, bookmark_field, record_dict))
+                                # pylint: enable=line-too-long
+                                child_bookmark_value = child_last_dttm
+                            if child_bookmark_value < child_last_dttm:
+                                # Finish looping
+                                LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
+                                    stream_name))
+                                break
+                        else:
+                            child_bookmark_value = child_last_dttm
+
+                        # Append parent_id to parent_ids
+                        parent_id = record_dict.get(parent_id_field)
+                        parent_ids.append(parent_id)
+
+                        j = j + 1
+                    # End: for record in cursor
+
+                    # Update the state with the max_bookmark_value for the child stream if parent is incremental
+                    if bookmark_field:
+                        write_bookmark(state, child_stream_name, child_max_bookmark_value)
+
                     chunk = 0 # chunk number
                     # Make chunks of parent_ids
                     for chunk_ids in split_list(parent_ids, parent_id_limit):

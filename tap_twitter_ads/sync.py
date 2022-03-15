@@ -421,10 +421,6 @@ def sync_endpoint(client,
                         j = j + 1
                     # End: for record in cursor
 
-                    # Update the state with the max_bookmark_value for the child stream if parent is incremental
-                    if bookmark_field:
-                        write_bookmark(state, child_stream_name, child_max_bookmark_value)
-
                     chunk = 0 # chunk number
                     # Make chunks of parent_ids
                     for chunk_ids in split_list(parent_ids, parent_id_limit):
@@ -461,6 +457,11 @@ def sync_endpoint(client,
                         child_stream_name, total_child_records))
                     update_currently_syncing(state, stream_name)
                     # End: if child_stream_name in child_streams
+
+                    # Update the state with the max_bookmark_value for the child stream if parent is incremental
+                    if bookmark_field:
+                        write_bookmark(state, child_stream_name, child_max_bookmark_value)
+
                 # End: for child_stream_name in children.items()
             # End: if children
 

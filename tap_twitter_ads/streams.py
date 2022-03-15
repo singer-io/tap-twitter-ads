@@ -53,13 +53,15 @@ STREAMS = {
         'params': {}
     },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/bidding-rules#bidding-rules
-    'bidding_rules': {
-        'path': 'bidding_rules',
-        'data_key': 'data',
-        'key_properties': ['currency'],
-        'replication_method': 'FULL_TABLE',
-        'params': {}
-    },
+    # In api-version 10, bidding_rules endpoint deprecated.
+    # Reference: https://twittercommunity.com/t/ads-api-version-10/158787#deprecated-bidding_rules-endpoint-14
+    # 'bidding_rules': {
+    #     'path': 'bidding_rules',
+    #     'data_key': 'data',
+    #     'key_properties': ['currency'],
+    #     'replication_method': 'FULL_TABLE',
+    #     'params': {}
+    # },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns
     'campaigns': {
         'path': 'accounts/{account_id}/campaigns',
@@ -508,6 +510,20 @@ STREAMS = {
                     'cursor': None
                 }
             }
+        }
+    },
+    # Reference: https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags
+    'tracking_tags': {
+        'path': 'accounts/{account_id}/tracking_tags',
+        'data_key': 'data',
+        'key_properties': ['id'],
+        'replication_method': 'INCREMENTAL',
+        'replication_keys': ['updated_at'],
+        'params': {
+            'sort_by': ['updated_at-desc'],
+            'with_deleted': '{with_deleted}',
+            'count': 1000,
+            'cursor': None
         }
     },
     # Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/tweets#get-accounts-account-id-scoped-timeline

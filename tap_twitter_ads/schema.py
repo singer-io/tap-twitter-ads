@@ -73,13 +73,6 @@ def load_shared_schema_refs():
     return shared_schema_refs
 
 
-def resolve_schema_references(schema, refs):
-    if '$ref' in schema['properties']:
-        link = schema['properties']['$ref']
-        schema['properties'].update(refs[link])
-        schema['properties']['$ref']
-
-
 def make_replication_key_automatic(mdata, schema, replication_keys):
     mdata = metadata.to_map(mdata)
 

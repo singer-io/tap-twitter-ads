@@ -15,13 +15,13 @@ jobs:
       - run:
           name: 'pylint'
           command: |
-            source /usr/local/share/virtualenvs/tap-shopify/bin/activate
+            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
             make test
       - run:
           name: 'JSON Validator'
           command: |
             source /usr/local/share/virtualenvs/tap-tester/bin/activate
-            stitch-validate-json tap_shopify/schemas/*.json
+            stitch-validate-json tap_twitter_ads/schemas/*.json
       - add_ssh_keys
       - run:
           name: 'Integration Tests'

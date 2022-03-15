@@ -105,7 +105,7 @@ def get_schemas(reports):
             schema = json.load(file)
 
         schemas[stream_name] = schema
-        resolve_schema_references(schema, refs)
+        schema = singer.resolve_schema_references(schema, refs)
         mdata = metadata.new()
 
         # Documentation:
@@ -184,7 +184,7 @@ def get_schemas(reports):
             schema = json.load(file)
 
         # Replace $ref nodes with reference nodes in schema
-        resolve_schema_references(schema, refs)
+        schema = singer.resolve_schema_references(schema, refs)
 
         # If NO_SEGMENT, then remove Segment fields
         if report_segment == 'NO_SEGMENT':

@@ -202,7 +202,6 @@ class TwitterAds:
         
         # endpoint_config variables
         path = hasattr(endpoint_config, 'path') and endpoint_config.path
-        LOGGER.info('Stream: {} - endpoint_config: {}'.format(stream_name, endpoint_config))
         id_fields = (hasattr(endpoint_config, 'key_properties') or []) and endpoint_config.key_properties
         parent_id_field = next(iter(id_fields), None) # first ID field
         params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
@@ -247,9 +246,7 @@ class TwitterAds:
             params = {}
             new_params = {}
             path = None
-            # params = endpoint_config.get('params', {})
             params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
-            # path = endpoint_config.get('path')
             path = hasattr(endpoint_config, 'path') and endpoint_config.path
 
             # Replace keys/ids in path and params
@@ -446,7 +443,6 @@ class TwitterAds:
         if bookmark_field:
             self.write_bookmark(state, stream_name, max_bookmark_value)
 
-        # import pdb; pdb.set_trace()
         return total_records
         # End sync_endpoint
 
@@ -1272,7 +1268,7 @@ class TargetingCriteria(TwitterAds):
         'count': 1000,
         'cursor': None
     }
-    parent_stream = ['line_items']
+    parent_stream = 'line_items'
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/line-items#line-items
 class LineItems(TwitterAds):
@@ -1529,7 +1525,7 @@ class TargetingTVShows(TwitterAds):
         'count': 50,
         'cursor': None
     }
-    parent_stream = ["targeting_tv_markets"]
+    parent_stream = "targeting_tv_markets"
     
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-markets
 class TargetingTvMarkets(TwitterAds):

@@ -16,7 +16,7 @@ jobs:
           name: 'pylint'
           command: |
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
-            make test
+            pylint tap_twitter_ads -d C,R,W
       - run:
           name: 'JSON Validator'
           command: |

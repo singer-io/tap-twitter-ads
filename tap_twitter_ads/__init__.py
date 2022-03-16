@@ -22,9 +22,26 @@ REQUIRED_CONFIG_KEYS = [
     'account_ids'
 ]
 
-def do_discover(reports, client):
+# checking credentials for the discover mode
+def check_credentials(client, account_ids):
+    # check whether tokens are valid or not
+    get_resource('accounts', client, 'accounts')
+    invalid_account_ids = []
+    # check whether account ids are valid or not
+    for account_id in account_ids.replace(' ', '').split(','):
+        try:
+            client.accounts(account_id)
+        except Exception as e:
+            invalid_account_ids.append(account_id)
+
+    if invalid_account_ids:
+        error_message = 'Invalid Twitter Ads accounts provided during the configuration:{}'.format(invalid_account_ids)
+        raise Exception(error_message) from None
+
+
+def do_discover(reports, client, account_ids):
     LOGGER.info('Starting discover')
-    get_resource("test", client, 'accounts') # checking credentials for the discover mode
+    check_credentials(client, account_ids) # validating credentials
     catalog = discover(reports)
     json.dump(catalog.to_dict(), sys.stdout, indent=2)
     LOGGER.info('Finished discover')
@@ -62,7 +79,7 @@ def main():
     reports = config.get('reports', {})
 
     if parsed_args.discover:
-        do_discover(reports, client)
+        do_discover(reports, client, config.get("account_ids"))
     elif parsed_args.catalog:
         _sync(client=client,
              config=config,

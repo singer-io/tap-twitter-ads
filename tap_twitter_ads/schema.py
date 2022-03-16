@@ -2,7 +2,7 @@ import os
 import json
 import singer
 from singer import metadata
-from tap_twitter_ads.streams import flatten_streams
+from tap_twitter_ads.streams import STREAMS
 
 
 LOGGER = singer.get_logger()
@@ -85,10 +85,9 @@ def get_schemas(reports):
     field_metadata = {}
 
     refs = load_shared_schema_refs()
-    flat_streams = flatten_streams()
 
     # JSON schemas for each stream endpoint
-    for stream_name, stream_metadata in flat_streams.items():
+    for stream_name, stream_metadata in STREAMS.items():
         schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
         with open(schema_path) as file:
             schema = json.load(file)
@@ -103,9 +102,9 @@ def get_schemas(reports):
         # https://github.com/singer-io/singer-python/blob/master/singer/metadata.py#L25-L44
         mdata = metadata.get_standard_metadata(
             schema=schema,
-            key_properties=stream_metadata.get('key_properties', None),
-            valid_replication_keys=stream_metadata.get('replication_keys', None),
-            replication_method=stream_metadata.get('replication_method', None)
+            key_properties= (hasattr(stream_metadata, 'key_properties') or None) and stream_metadata.key_properties,
+            valid_replication_keys=(hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys,
+            replication_method=(hasattr(stream_metadata, 'replication_method') or None) and stream_metadata.replication_method
         )
         field_metadata[stream_name] = mdata
 

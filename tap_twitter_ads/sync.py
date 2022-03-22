@@ -376,7 +376,7 @@ def sync_endpoint(client,
                     child_last_dttm = strptime_to_utc(child_last_datetime)
 
                     child_max_bookmark_value = None
-                    j = 0
+                    child_counter = 0
                     # Loop thru cursor records, break out if no more data or child_bookmark_value < child_last_dttm
                     for record in cursor_child:
                         # Get dictionary for record
@@ -395,7 +395,7 @@ def sync_endpoint(client,
                             if bookmark_value_str:
                                     child_bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
                                     # If first record, set max_bookmark_value
-                                    if j == 0:
+                                    if child_counter == 0:
                                         child_max_bookmark_dttm = child_bookmark_value
                                         child_max_bookmark_value = child_max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
                                         LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
@@ -418,7 +418,7 @@ def sync_endpoint(client,
                         parent_id = record_dict.get(parent_id_field)
                         parent_ids.append(parent_id)
 
-                        j = j + 1
+                        child_counter = child_counter + 1
                     # End: for record in cursor
 
                     chunk = 0 # chunk number

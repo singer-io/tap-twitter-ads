@@ -254,7 +254,7 @@ STREAMS = {
                 'path': 'accounts/{account_id}/targeting_criteria',
                 'data_key': 'data',
                 'key_properties': ['line_item_id', 'id'],
-                'replication_method': 'FULL_TABLE',
+                'replication_method': 'INCREMENTAL',
                 'parent_ids_limit': 200,
                 'params': {
                     'line_item_ids': '{parent_ids}', # up to 200 comma delim ids

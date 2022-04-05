@@ -66,7 +66,6 @@ ERROR_CODE_EXCEPTION_MAPPING = {
         "raise_exception": TwitterAdsInternalServerError,
         "message": "Internal error."
     },
-
     503: {
         "raise_exception": TwitterAdsServiceUnavailableError,
         "message": "Service is unavailable."

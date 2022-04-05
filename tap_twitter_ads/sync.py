@@ -123,8 +123,8 @@ def get_async_data(report_name, client, url):
         response_body = response.body
 
     except Exception as e:
-        LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
         # see tap-twitter-ads.client for more details
+        LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
         raise_for_error(e)
 
     return response_body

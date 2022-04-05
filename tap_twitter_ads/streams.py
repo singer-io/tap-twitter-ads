@@ -52,16 +52,6 @@ STREAMS = {
         'replication_method': 'FULL_TABLE',
         'params': {}
     },
-    # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/bidding-rules#bidding-rules
-    # In api-version 10, bidding_rules endpoint deprecated.
-    # Reference: https://twittercommunity.com/t/ads-api-version-10/158787#deprecated-bidding_rules-endpoint-14
-    # 'bidding_rules': {
-    #     'path': 'bidding_rules',
-    #     'data_key': 'data',
-    #     'key_properties': ['currency'],
-    #     'replication_method': 'FULL_TABLE',
-    #     'params': {}
-    # },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns
     'campaigns': {
         'path': 'accounts/{account_id}/campaigns',

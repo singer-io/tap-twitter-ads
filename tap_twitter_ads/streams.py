@@ -28,6 +28,10 @@ from tap_twitter_ads.transform import transform_record, transform_report
 
 LOGGER = singer.get_logger()
 
+# Currently syncing sets the stream currently being delivered in the state.
+# If the integration is interrupted, this state property is used to identify
+#  the starting point to continue from.
+# Reference: https://github.com/singer-io/singer-python/blob/master/singer/bookmarks.py#L41-L46
 def update_currently_syncing(state, stream_name):
     if (stream_name is None) and ('currently_syncing' in state):
         del state['currently_syncing']
@@ -448,6 +452,7 @@ class TwitterAds:
 
 # Class for all reports streams
 class Reports(TwitterAds):
+    # syncing for all report streams
     def sync_report(self,
                     client,
                     catalog,

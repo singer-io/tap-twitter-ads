@@ -194,7 +194,7 @@ STREAMS = {
     },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories
     'content_categories': {
-        'path': 'iab_categories',
+        'path': 'content_categories',
         'data_key': 'data',
         'key_properties': ['id'],
         'replication_method': 'FULL_TABLE',
@@ -219,7 +219,7 @@ STREAMS = {
     },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/iab-categories#iab-categories
     'iab_categories': {
-        'path': 'content_categories',
+        'path': 'iab_categories',
         'data_key': 'data',
         'key_properties': ['id'],
         'replication_method': 'FULL_TABLE',
@@ -400,7 +400,7 @@ STREAMS = {
     },
     # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
     'targeting_events': {
-        'path': 'targeting_criteria/devices',
+        'path': 'targeting_criteria/events',
         'data_key': 'data',
         'key_properties': ['targeting_value'],
         'replication_method': 'FULL_TABLE',

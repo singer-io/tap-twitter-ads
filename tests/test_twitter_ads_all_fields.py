@@ -15,9 +15,13 @@ class AllFieldsTest(TwitterAds):
         • Verify that more than just the automatic fields are replicated for each stream. 
         • verify all fields for each stream are replicated
         """
-
+     
         # Streams to verify all fields tests
-        expected_streams = self.expected_streams()
+        streams_to_test = self.expected_streams()
+
+        # For following streams, we are not able to generate any records. So, skipping those streams from test case.
+        streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
+                                                     'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report'}
 
         expected_automatic_fields = self.expected_automatic_fields()
         conn_id = connections.ensure_connection(self)
@@ -26,7 +30,7 @@ class AllFieldsTest(TwitterAds):
 
         # table and field selection
         test_catalogs_all_fields = [catalog for catalog in found_catalogs
-                                    if catalog.get('tap_stream_id') in expected_streams]
+                                    if catalog.get('tap_stream_id') in streams_to_test]
 
         self.perform_and_verify_table_and_field_selection(
             conn_id, test_catalogs_all_fields)
@@ -49,9 +53,9 @@ class AllFieldsTest(TwitterAds):
 
         # Verify no unexpected streams were replicated
         synced_stream_names = set(synced_records.keys())
-        self.assertSetEqual(expected_streams, synced_stream_names)
-
-        for stream in expected_streams:
+        self.assertSetEqual(streams_to_test, synced_stream_names)
+    
+        for stream in streams_to_test:
             with self.subTest(stream=stream):
 
                 # expected values
@@ -69,6 +73,38 @@ class AllFieldsTest(TwitterAds):
                 for message in messages['messages']:
                     if message['action'] == 'upsert':
                         actual_all_keys.update(message['data'].keys())
+                    
+                # As we can't generate following fields by twitter-ads APIs and UI, so removed it form expectation list.
+                if stream == "tailored_audiences":
+                    expected_all_keys = expected_all_keys - {'is_owner'}
+                elif stream == "accounts":
+                    expected_all_keys = expected_all_keys - {'salt'}
+                elif stream == "account_media":
+                    # https://github.com/twitterdev/twitter-python-ads-sdk/blob/master/twitter_ads/creative.py#L95-#L103
+                    expected_all_keys = expected_all_keys - {'total_budget_amount_local_micro', 'end_time''entity_status', 'currency', 
+                                                             'reasons_not_servable', 'name', 'funding_instrument_id', 'duration_in_days', 
+                                                             'daily_budget_amount_local_micro', 'servable''start_time', 'frequency_cap', 
+                                                             'standard_delivery'}
+                
+                elif stream == "tweets":
+                    expected_all_keys = expected_all_keys - {'text', 'retweeted_status', 'extended_entities', 'reply_count'
+                                                            ,'quoted_status', 'filter_level', 'quote_count', 'is_quote_status'
+                                                            ,'quote_status_id_str', 'quote_status_id', 'possibly_sensitive', 
+                                                            'matching_rules'}
+                elif stream == "media_creatives":
+                    expected_all_keys = expected_all_keys - {'serving_status'}
+                elif stream == "line_items":
+                    # https://twittercommunity.com/t/ads-api-version-9/150316#line-itemad-group-detail-changes-4
+                    # https://twittercommunity.com/t/ads-api-version-10/158787
+                    expected_all_keys = expected_all_keys - {'charge_by', 'tracking_tags', 'bid_unit', 'optimization', 'bid_type',
+                                                             'automatically_select_bid'}
+                elif stream == "cards_poll":
+                    expected_all_keys = expected_all_keys - {'video_url', 'video_poster_url', 'video_hls_url', 'video_poster_width', 
+                                                             'video_height', 'video_poster_height', 'content_duration_seconds', 'video_width'}
+                
+                elif stream == "targeting_criteria":
+                    # https://twittercommunity.com/t/ads-api-version-9/150316/3
+                    expected_all_keys = expected_all_keys - {'tailored_audience_expansion', 'tailored_audience_type'}
 
                 # verify all fields for each stream are replicated
                 self.assertSetEqual(expected_all_keys, actual_all_keys)

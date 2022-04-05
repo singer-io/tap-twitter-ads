@@ -6,7 +6,7 @@ from base import TwitterAds
 
 class BookmarkTest(TwitterAds):
     """Test tap sets a bookmark and respects it for the next sync of a stream"""
-
+    
     def name(self):
         return "tap_tester_twitter_ads_bookmark_test"
 
@@ -26,7 +26,12 @@ class BookmarkTest(TwitterAds):
             different values for the replication key
         """
 
-        expected_streams = self.expected_streams()
+        streams_to_test = self.expected_streams()
+
+        # For following streams, we are not able to generate any records. So, skipping those streams from test case.
+        streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
+                                                     'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report'}
+
         expected_replication_keys = self.expected_replication_keys()
         expected_replication_methods = self.expected_replication_method()
 
@@ -40,7 +45,7 @@ class BookmarkTest(TwitterAds):
 
         # table and field selection
         catalog_entries = [catalog for catalog in found_catalogs
-                           if catalog.get('tap_stream_id') in expected_streams]
+                           if catalog.get('tap_stream_id') in streams_to_test]
 
         self.perform_and_verify_table_and_field_selection(
             conn_id, catalog_entries)
@@ -74,7 +79,7 @@ class BookmarkTest(TwitterAds):
         ##########################################################################
 
 
-        for stream in expected_streams:
+        for stream in streams_to_test:
             with self.subTest(stream=stream):
 
                 # expected values

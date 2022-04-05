@@ -12,7 +12,7 @@
         "type": ["null", "string"]
       },
       "tracking_tag_url": {
-        "type": ["null", "integer"]
+        "type": ["null", "string"]
       },
       "created_at": {
         "type": ["null", "string"],

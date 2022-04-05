@@ -18,6 +18,7 @@ class TwitterAds(unittest.TestCase):
     FULL_TABLE = "FULL_TABLE"
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
+    PAGE_SIZE = 2
 
     def tap_name(self):
         return "tap-twitter-ads"
@@ -37,22 +38,17 @@ class TwitterAds(unittest.TestCase):
         """Configuration properties required for the tap."""
 
         return_value = {
-            "start_date": os.getenv("TAP_TWITTER_ADS_START_DATE"),
             "account_ids": os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS"),
             "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW") or "14",
             "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED") or "true",
             "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES") or "US, CA",
+            "start_date": "2019-03-01T00:00:00Z",
+            "page_size": self.PAGE_SIZE,
             "reports": [
                 {
                     "name": "accounts_daily_report",
                     "entity": "ACCOUNT",
                     "segment": "NO_SEGMENT",
-                    "granularity": "DAY"
-                },
-                {
-                    "name": "accounts_conversion_tags_hourly_report",
-                    "entity": "ACCOUNT",
-                    "segment": "CONVERSION_TAGS",
                     "granularity": "HOUR"
                 },
                 {
@@ -76,7 +72,6 @@ class TwitterAds(unittest.TestCase):
             "TAP_TWITTER_ADS_CONSUMER_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
             "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-            "TAP_TWITTER_ADS_START_DATE",
             "TAP_TWITTER_ADS_ACCOUNT_IDS"
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
@@ -135,9 +130,14 @@ class TwitterAds(unittest.TestCase):
             },
             "line_items": default_metadata,
             "targeting_criteria": {
+                # `targeting_criteria` is child stream of line_items stream which is incremental.
+                # We are writing a separate bookmark for the child stream in which we are storing 
+                # the bookmark based on the parent's replication key.
+                # But, we are not using any fields from the child record for it.
+                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                 self.PRIMARY_KEYS: {"line_item_id", "id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False
+                self.OBEYS_START_DATE: True
             },
             "media_creatives": default_metadata,
             "preroll_call_to_actions": default_metadata,
@@ -149,18 +149,22 @@ class TwitterAds(unittest.TestCase):
             "targeting_app_store_categories": targeting_endpoint_metadata,
             "targeting_conversations": targeting_endpoint_metadata,
             "targeting_devices": targeting_endpoint_metadata,
-            "targeting_events": targeting_endpoint_metadata,
+            "targeting_events": {
+                self.PRIMARY_KEYS: {"targeting_value"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: True
+            },
             "targeting_interests": targeting_endpoint_metadata,
             "targeting_languages": targeting_endpoint_metadata,
             "targeting_locations": targeting_endpoint_metadata,
             "targeting_network_operators": targeting_endpoint_metadata,
             "targeting_platform_versions": targeting_endpoint_metadata,
             "targeting_platforms": targeting_endpoint_metadata,
-            "targeting_tv_markets":  {
-                self.PRIMARY_KEYS: {"locale"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-            },
-            "targeting_tv_shows": targeting_endpoint_metadata,
+            # "targeting_tv_markets":  {
+            #     self.PRIMARY_KEYS: {"locale"},
+            #     self.REPLICATION_METHOD: self.FULL_TABLE,
+            # },
+            # "targeting_tv_shows": targeting_endpoint_metadata,
             "tweets": {
                 self.REPLICATION_KEYS: {"created_at"},
                 self.PRIMARY_KEYS: {"id"},

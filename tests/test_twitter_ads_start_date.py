@@ -1,20 +1,21 @@
 import tap_tester.connections as connections
 import tap_tester.runner as runner
+import tap_tester.menagerie as menagerie
 
 from base import TwitterAds
 
 class StartDateTest(TwitterAds):
     """
     Ensure both all expected streams respect the start date. Run tap in check mode, 
-    run 1st sync with start date = 2021-11-10, run check mode and 2nd sync on a new connection with start date = 13 days later.
+    run 1st sync with start date = 2019-03-01T00:00:00Z, run check mode and 2nd sync on a new connection with start date 2022-04-04T06:00:00Z.
     """
-
+    
     def name(self):
         return "tap_tester_twitter_ads_start_date_test"
 
     start_date_1 = ""
     start_date_2 = ""
-
+        
     def test_run(self):
         """
         Test that the start_date configuration is respected
@@ -24,10 +25,16 @@ class StartDateTest(TwitterAds):
         • verify all data from later start data has bookmark values >= start_date
         """
         # Streams to verify start date tests
-        expected_streams = self.expected_streams()
+        streams_to_test = self.expected_streams()
+    
+        # For following streams, we are not able to generate any records. So, skipping those streams from test case.
+        streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
+                                            'accounts', 'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report'}
+
+        expected_replication_methods = self.expected_replication_method()
 
         self.start_date_1 = self.get_properties().get('start_date')
-        self.start_date_2 = self.timedelta_formatted(self.start_date_1, days=-1)
+        self.start_date_2 = "2022-04-04T12:50:00Z"
         self.start_date = self.start_date_1
 
         ##########################################################################
@@ -42,7 +49,7 @@ class StartDateTest(TwitterAds):
 
         # table and field selection
         test_catalogs_1_all_fields = [catalog for catalog in found_catalogs_1
-                                      if catalog.get('tap_stream_id') in expected_streams]
+                                      if catalog.get('tap_stream_id') in streams_to_test]
         self.perform_and_verify_table_and_field_selection(
             conn_id_1, test_catalogs_1_all_fields, select_all_fields=True)
 
@@ -53,7 +60,7 @@ class StartDateTest(TwitterAds):
         ##########################################################################
         # Update START DATE Between Syncs
         ##########################################################################
-
+   
         print("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
             self.start_date, self.start_date_2))
         self.start_date = self.start_date_2
@@ -71,7 +78,7 @@ class StartDateTest(TwitterAds):
 
         # table and field selection
         test_catalogs_2_all_fields = [catalog for catalog in found_catalogs_2
-                                      if catalog.get('tap_stream_id') in expected_streams]
+                                      if catalog.get('tap_stream_id') in streams_to_test]
         self.perform_and_verify_table_and_field_selection(
             conn_id_2, test_catalogs_2_all_fields, select_all_fields=True)
 
@@ -79,11 +86,12 @@ class StartDateTest(TwitterAds):
         record_count_by_stream_2 = self.run_and_verify_sync(conn_id_2)
         synced_records_2 = runner.get_records_from_target_output()
 
-        for stream in expected_streams:
+        for stream in streams_to_test:
             with self.subTest(stream=stream):
 
                 # expected values
                 expected_primary_keys = self.expected_primary_keys()[stream]
+                expected_replication_method = expected_replication_methods[stream]
 
                 # collect information for assertions from syncs 1 & 2 base on expected values
                 record_count_sync_1 = record_count_by_stream_1.get(stream, 0)
@@ -99,7 +107,7 @@ class StartDateTest(TwitterAds):
                 primary_keys_sync_1 = set(primary_keys_list_1)
                 primary_keys_sync_2 = set(primary_keys_list_2)
 
-                if self.expected_metadata()[stream][self.OBEYS_START_DATE]:
+                if expected_replication_method == self.INCREMENTAL:
 
                     # collect information specific to incremental streams from syncs 1 & 2
                     expected_replication_key = next(
@@ -130,16 +138,18 @@ class StartDateTest(TwitterAds):
                             "Sync start_date: {}\n".format(self.start_date_2) +
                                 "Record date: {} ".format(replication_date)
                         )
-                    # Verify the number of records replicated in sync 1 is greater than the number
-                    # of records replicated in sync 2
-                    self.assertGreater(record_count_sync_1,
-                                       record_count_sync_2)
 
                     # Verify the records replicated in sync 2 were also replicated in sync 1
                     self.assertTrue(
                         primary_keys_sync_2.issubset(primary_keys_sync_1))
-                else:
 
+                if self.expected_metadata()[stream][self.OBEYS_START_DATE]:
+                    
+                    # Verify the number of records replicated in sync 1 is greater than the number
+                    # of records replicated in sync 2
+                    self.assertGreater(record_count_sync_1,
+                                       record_count_sync_2)
+                else:
                     # Verify that the 2nd sync with a later start date replicates the same number of
                     # records as the 1st sync.
 

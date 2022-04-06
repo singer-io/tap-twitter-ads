@@ -17,7 +17,7 @@ class PaginationTest(TwitterAds):
         • Verify by pks that the data replicated matches the data we expect.
         """
       
-        expected_streams = self.expected_streams()
+        streams_to_test = self.expected_streams()
 
         # For following streams, we are not able to generate enough records. So, skipping those streams from test case.
         streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
@@ -31,7 +31,7 @@ class PaginationTest(TwitterAds):
 
         # table and field selection
         test_catalogs_all_fields = [catalog for catalog in found_catalogs
-                                    if catalog.get('tap_stream_id') in expected_streams]
+                                    if catalog.get('tap_stream_id') in streams_to_test]
 
         self.perform_and_verify_table_and_field_selection(
             conn_id, test_catalogs_all_fields)
@@ -42,7 +42,7 @@ class PaginationTest(TwitterAds):
 
         # Verify no unexpected streams were replicated
         synced_stream_names = set(synced_records.keys())
-        self.assertSetEqual(expected_streams, synced_stream_names)
+        self.assertSetEqual(streams_to_test, synced_stream_names)
 
         for stream in streams_to_test:
             with self.subTest(stream=stream):

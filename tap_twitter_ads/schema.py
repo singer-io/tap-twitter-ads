@@ -74,9 +74,10 @@ def load_shared_schema_refs():
 
 
 def make_replication_key_automatic(mdata, schema, replication_keys):
+    # Make all replication keys as inclusion of automatic.
     mdata = metadata.to_map(mdata)
 
-    # Loop through all keys and make replication keys of automatic inclusion
+    # Loop through all keys and if keys found in replication_keys then make it automatic inclusion
     for field_name in schema['properties'].keys():
 
         if replication_keys and field_name in replication_keys:

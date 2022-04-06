@@ -18,7 +18,7 @@ class TwitterAds(unittest.TestCase):
     FULL_TABLE = "FULL_TABLE"
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
-    PAGE_SIZE = 2
+    PAGE_SIZE = 1000
 
     def tap_name(self):
         return "tap-twitter-ads"
@@ -55,7 +55,7 @@ class TwitterAds(unittest.TestCase):
                     "name": "campaigns_daily_report",
                     "entity": "CAMPAIGN",
                     "segment": "NO_SEGMENT",
-                    "granularity": "DAY"
+                    "granularity": "HOUR"
                 }
             ]
         }
@@ -117,21 +117,17 @@ class TwitterAds(unittest.TestCase):
             "cards_video_conversation": default_metadata,
             "cards_image_direct_message": default_metadata,
             "cards_video_direct_message": default_metadata,
-            # https://jira.talendforge.org/browse/TDL-18374
-            # Endpoints are swapped for content_categories and iab_categories streams
-            # "content_categories": {
-            #     self.PRIMARY_KEYS: {"id"},
-            #     self.REPLICATION_METHOD: self.FULL_TABLE,
-            #     self.OBEYS_START_DATE: False
-            # },
+            "content_categories": {
+                self.PRIMARY_KEYS: {"id"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False
+            },
             "funding_instruments": default_metadata,
-            # https://jira.talendforge.org/browse/TDL-18374
-            # Endpoints are swapped for content_categories and iab_categories streams
-            # "iab_categories": {
-            #     self.PRIMARY_KEYS: {"id"},
-            #     self.REPLICATION_METHOD: self.FULL_TABLE,
-            #     self.OBEYS_START_DATE: False
-            # },
+            "iab_categories": {
+                self.PRIMARY_KEYS: {"id"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False
+            },
             "line_items": default_metadata,
             "targeting_criteria": {
                 # `targeting_criteria` is child stream of line_items stream which is incremental.
@@ -153,23 +149,22 @@ class TwitterAds(unittest.TestCase):
             "targeting_app_store_categories": targeting_endpoint_metadata,
             "targeting_conversations": targeting_endpoint_metadata,
             "targeting_devices": targeting_endpoint_metadata,
-            # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-            # "targeting_events": {
-            #     self.PRIMARY_KEYS: {"targeting_value"},
-            #     self.REPLICATION_METHOD: self.FULL_TABLE,
-            #     self.OBEYS_START_DATE: True
-            # },
+            "targeting_events": {
+                self.PRIMARY_KEYS: {"targeting_value"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: True
+            },
             "targeting_interests": targeting_endpoint_metadata,
             "targeting_languages": targeting_endpoint_metadata,
             "targeting_locations": targeting_endpoint_metadata,
             "targeting_network_operators": targeting_endpoint_metadata,
             "targeting_platform_versions": targeting_endpoint_metadata,
             "targeting_platforms": targeting_endpoint_metadata,
-            # "targeting_tv_markets":  {
-            #     self.PRIMARY_KEYS: {"locale"},
-            #     self.REPLICATION_METHOD: self.FULL_TABLE,
-            # },
-            # "targeting_tv_shows": targeting_endpoint_metadata,
+            "targeting_tv_markets":  {
+                self.PRIMARY_KEYS: {"locale"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+            },
+            "targeting_tv_shows": targeting_endpoint_metadata,
             "tweets": {
                 self.REPLICATION_KEYS: {"created_at"},
                 self.PRIMARY_KEYS: {"id"},
@@ -178,7 +173,6 @@ class TwitterAds(unittest.TestCase):
             },
             "accounts_daily_report": report_metadata,
             "campaigns_daily_report": report_metadata,
-            "accounts_conversion_tags_hourly_report": report_metadata
         }
 
     def expected_streams(self):

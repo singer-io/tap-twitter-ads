@@ -16,14 +16,25 @@ class PaginationTest(TwitterAds):
         This requires we ensure more than 1 page of data exists at all times for any given stream.
         • Verify by pks that the data replicated matches the data we expect.
         """
-      
-        streams_to_test = self.expected_streams()
+        expected_streams = self.expected_streams()
 
         # For following streams, we are not able to generate enough records. So, skipping those streams from test case.
-        streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
+        expected_streams = expected_streams - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report',
                                             'promoted_accounts', 'cards_image_direct_message', 'account_media', 'targeting_platforms',
-                                            'targeting_devices', 'funding_instruments', 'promotable_users'}
+                                           'targeting_devices', 'funding_instruments', 'promotable_users', 'account', 'tailored_audiences'}
+
+        # Reduce page_size to 2 due to less data.
+        self.run_test(expected_streams=expected_streams - {"targeting_locations", "targeting_conversations"}, page_size=2)    
+        
+        # Againg set page_size to 1000 for following streams because these streams containg more than 40000 records.
+        # So, page_size of 2 get lot of time to get all records.
+        self.run_test(expected_streams={"targeting_locations", "targeting_conversations"}, page_size=1000)
+    
+    def run_test(self, expected_streams, page_size):
+
+        streams_to_test = expected_streams
+        self.PAGE_SIZE = page_size
 
         conn_id = connections.ensure_connection(self)
 
@@ -49,18 +60,18 @@ class PaginationTest(TwitterAds):
 
                 # expected values
                 expected_primary_keys = self.expected_primary_keys()[stream]
-       
+         
                 # verify that we can paginate with all fields selected
                 record_count_sync = record_count_by_stream.get(stream, 0)
-                self.assertGreater(record_count_sync, self.PAGE_SIZE,
+                self.assertGreater(record_count_sync, page_size,
                                     msg="The number of records is not over the stream max limit")
 
                 primary_keys_list = [tuple([message.get('data').get(expected_pk) for expected_pk in expected_primary_keys])
                                         for message in synced_records.get(stream).get('messages')
                                         if message.get('action') == 'upsert']
 
-                primary_keys_list_1 = primary_keys_list[:self.PAGE_SIZE]
-                primary_keys_list_2 = primary_keys_list[self.PAGE_SIZE:2*self.PAGE_SIZE]
+                primary_keys_list_1 = primary_keys_list[:page_size]
+                primary_keys_list_2 = primary_keys_list[page_size:2*page_size]
 
                 primary_keys_page_1 = set(primary_keys_list_1)
                 primary_keys_page_2 = set(primary_keys_list_2)

@@ -26,10 +26,13 @@ class StartDateTest(TwitterAds):
         """
         # Streams to verify start date tests
         streams_to_test = self.expected_streams()
-    
-        # For following streams, we are not able to generate any records. So, skipping those streams from test case.
+
+        # For following streams(except targeting_tv_markets and targeting_tv_shows), we are not able to generate any records.
+        # targeting_tv_markets and targeting_tv_shows streams take more than 5 hour to complete the sync.
+        #  So, skipping those streams from test case.
         streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
-                                            'accounts', 'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report'}
+                                            'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
+                                            'targeting_tv_markets', 'targeting_tv_shows'}
 
         expected_replication_methods = self.expected_replication_method()
 
@@ -150,6 +153,7 @@ class StartDateTest(TwitterAds):
                     self.assertGreater(record_count_sync_1,
                                        record_count_sync_2)
                 else:
+                    
                     # Verify that the 2nd sync with a later start date replicates the same number of
                     # records as the 1st sync.
 

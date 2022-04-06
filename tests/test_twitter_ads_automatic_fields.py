@@ -21,9 +21,12 @@ class AutomaticFieldsTest(TwitterAds):
 
         streams_to_test = self.expected_streams()
         
-        # For following streams, we are not able to generate any records. So, skipping those streams from test case.
+        # For following streams(except targeting_tv_markets and targeting_tv_shows), we are not able to generate any records.
+        # targeting_tv_markets and targeting_tv_shows streams take more than 5 hour to complete the sync.
+        #  So, skipping those streams from test case.
         streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
-                                                     'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report'}
+                                            'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 
+                                            'targeting_tv_markets', 'targeting_tv_shows'}
 
         conn_id = connections.ensure_connection(self)
 

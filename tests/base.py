@@ -43,7 +43,6 @@ class TwitterAds(unittest.TestCase):
             "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED") or "true",
             "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES") or "US, CA",
             "start_date": "2019-03-01T00:00:00Z",
-            "page_size": self.PAGE_SIZE,
             "reports": [
                 {
                     "name": "accounts_daily_report",

@@ -1424,10 +1424,7 @@ class TargetingDevices(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
 class TargetingEvents(TwitterAds):
@@ -1512,10 +1509,7 @@ class TargetingPlatforms(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-shows
 class TargetingTVShows(TwitterAds):

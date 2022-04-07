@@ -98,10 +98,17 @@ class TwitterAds:
         )
         
     # to read bookmarks in sync mode     
-    def write_bookmark(self, state, stream, value):
+    def write_bookmark(self, state, stream, value, sub_type=None):
         if 'bookmarks' not in state:
             state['bookmarks'] = {}
-        state['bookmarks'][stream] = value
+            
+        if sub_type:
+            # Store bookmark value for each sub_type of tweets stream
+            state['bookmarks'][stream] = state['bookmarks'].get(stream, {})
+            state['bookmarks'][stream][sub_type] = value
+            LOGGER.info(state)
+        else:
+            state['bookmarks'][stream] = value
         LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
         singer.write_state(state)   
             
@@ -236,7 +243,6 @@ class TwitterAds:
         last_datetime = self.get_bookmark(state, stream_name, start_date)
         if not last_datetime or last_datetime is None:
             last_datetime = start_date
-        last_dttm = strptime_to_utc(last_datetime)
 
         # NOTE: Risk of syncing indefinitely and never getting bookmark
         max_bookmark_value = None
@@ -244,6 +250,13 @@ class TwitterAds:
         total_records = 0
         # Loop through sub_types (for tweets endpoint), all other endpoints loop once
         for sub_type in sub_types:
+
+            if stream_name == "tweets" and last_datetime != start_date:
+                # tweets stream contain two separate bookmark for each sub_type(PUBLISHED, SCHEDULED)
+                last_dttm = strptime_to_utc(last_datetime.get(sub_type))
+            else:
+                last_dttm = strptime_to_utc(last_datetime)
+
             LOGGER.info('sub_type = {}'.format(sub_type)) # COMMENT OUT
 
             # Reset params and path for each sub_type
@@ -321,7 +334,7 @@ class TwitterAds:
                             else:
                                 bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
                             # If first record, set max_bookmark_value
-                            if i == 0:
+                            if i == 0 and sub_type != "SCHEDULED": # SCHEDULED type tweets response do not contain records in sorted order.
                                 max_bookmark_dttm = bookmark_value
                                 max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
                                 LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
@@ -332,7 +345,24 @@ class TwitterAds:
                                 stream_name, bookmark_field, record_dict))
                             # pylint: enable=line-too-long
                             bookmark_value = last_dttm
-                        if bookmark_value < last_dttm:
+
+                        # Bookmark mechanism for SCHEDULED type tweets
+                        if sub_type == "SCHEDULED":
+                            if not max_bookmark_dttm:
+                                # Assign maximum bookmark value to last saved state
+                                max_bookmark_dttm = last_dttm
+                                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                            if bookmark_value >= max_bookmark_dttm:
+                                # If replication key value of current record greater than maximum bookmark then update it.
+                                max_bookmark_dttm = bookmark_value
+                                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                            if bookmark_value < last_dttm:
+                                # Skip record if replication value less than last saved state
+                                continue
+
+                        elif bookmark_value < last_dttm:
                             # Finish looping
                             LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
                                 stream_name))
@@ -373,6 +403,11 @@ class TwitterAds:
 
                     # End: for record in cursor
                 # End: with metrics as counter
+
+            # Update the state with the max_bookmark_value for the tweets stream
+            if stream_name == "tweets":
+                self.write_bookmark(state, stream_name, max_bookmark_value, sub_type)
+                max_bookmark_dttm = None
 
             # Loop through children and chunks of parent_ids
             if children:
@@ -443,8 +478,8 @@ class TwitterAds:
             # pylint: enable=line-too-long
             # End: for sub_type in sub_types
 
-        # Update the state with the max_bookmark_value for the stream
-        if bookmark_field:
+        # Update the state with the max_bookmark_value for the stream except tweets stream
+        if bookmark_field  and stream_name != "tweets":
             self.write_bookmark(state, stream_name, max_bookmark_value)
 
         return total_records

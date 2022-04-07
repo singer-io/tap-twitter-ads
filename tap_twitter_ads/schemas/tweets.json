@@ -8,6 +8,9 @@
     "id": {
       "type": ["null", "integer"]
     },
+    "tweet_type": {
+      "type": ["null", "string"]
+    },
     "id_str": {
       "type": ["null", "string"]
     },

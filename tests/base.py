@@ -12,12 +12,14 @@ import pytz
 class TwitterAds(unittest.TestCase):
     start_date = ""
     START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
     FULL_TABLE = "FULL_TABLE"
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
+    PAGE_SIZE = 1000
 
     def tap_name(self):
         return "tap-twitter-ads"
@@ -37,29 +39,23 @@ class TwitterAds(unittest.TestCase):
         """Configuration properties required for the tap."""
 
         return_value = {
-            "start_date": os.getenv("TAP_TWITTER_ADS_START_DATE"),
             "account_ids": os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS"),
             "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW") or "14",
             "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED") or "true",
             "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES") or "US, CA",
+            "start_date": "2019-03-01T00:00:00Z",
             "reports": [
                 {
                     "name": "accounts_daily_report",
                     "entity": "ACCOUNT",
                     "segment": "NO_SEGMENT",
-                    "granularity": "DAY"
-                },
-                {
-                    "name": "accounts_conversion_tags_hourly_report",
-                    "entity": "ACCOUNT",
-                    "segment": "CONVERSION_TAGS",
                     "granularity": "HOUR"
                 },
                 {
                     "name": "campaigns_daily_report",
                     "entity": "CAMPAIGN",
                     "segment": "NO_SEGMENT",
-                    "granularity": "DAY"
+                    "granularity": "HOUR"
                 }
             ]
         }
@@ -76,7 +72,6 @@ class TwitterAds(unittest.TestCase):
             "TAP_TWITTER_ADS_CONSUMER_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
             "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-            "TAP_TWITTER_ADS_START_DATE",
             "TAP_TWITTER_ADS_ACCOUNT_IDS"
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
@@ -154,7 +149,11 @@ class TwitterAds(unittest.TestCase):
             "targeting_app_store_categories": targeting_endpoint_metadata,
             "targeting_conversations": targeting_endpoint_metadata,
             "targeting_devices": targeting_endpoint_metadata,
-            "targeting_events": targeting_endpoint_metadata,
+            "targeting_events": {
+                self.PRIMARY_KEYS: {"targeting_value"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: True
+            },
             "targeting_interests": targeting_endpoint_metadata,
             "targeting_languages": targeting_endpoint_metadata,
             "targeting_locations": targeting_endpoint_metadata,
@@ -174,7 +173,6 @@ class TwitterAds(unittest.TestCase):
             },
             "accounts_daily_report": report_metadata,
             "campaigns_daily_report": report_metadata,
-            "accounts_conversion_tags_hourly_report": report_metadata
         }
 
     def expected_streams(self):
@@ -338,7 +336,7 @@ class TwitterAds(unittest.TestCase):
             days, hours, minutes = timedelta_by_stream[stream]
             calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
 
-            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.START_DATE_FORMAT)
+            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
             stream_to_calculated_state[stream] = calculated_state_formatted
 

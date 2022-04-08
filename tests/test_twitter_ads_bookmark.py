@@ -41,6 +41,9 @@ class BookmarkTest(TwitterAds):
         # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
         streams_to_test = streams_to_test - {'targeting_events'}
         
+        # Invalid bookmark for tweets stream - https://jira.talendforge.org/browse/TDL-18465
+        streams_to_test = streams_to_test - {'tweets'}
+
         expected_replication_keys = self.expected_replication_keys()
         expected_replication_methods = self.expected_replication_method()
 

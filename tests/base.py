@@ -40,9 +40,9 @@ class TwitterAds(unittest.TestCase):
 
         return_value = {
             "account_ids": os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS"),
-            "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW") or "14",
-            "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED") or "true",
-            "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES") or "US, CA",
+            "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW"),
+            "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED"),
+            "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES"),
             "start_date": "2019-03-01T00:00:00Z",
             "reports": [
                 {
@@ -72,7 +72,10 @@ class TwitterAds(unittest.TestCase):
             "TAP_TWITTER_ADS_CONSUMER_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
             "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-            "TAP_TWITTER_ADS_ACCOUNT_IDS"
+            "TAP_TWITTER_ADS_ACCOUNT_IDS",
+            "TAP_TWITTER_ADS_ATTRIBUTION_WINDOW",
+            "TAP_TWITTER_ADS_WITH_DELETED",
+            "TAP_TWITTER_ADS_COUNTRY_CODES"
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
         if missing_envs:
@@ -131,7 +134,7 @@ class TwitterAds(unittest.TestCase):
             "line_items": default_metadata,
             "targeting_criteria": {
                 # `targeting_criteria` is child stream of line_items stream which is incremental.
-                # We are writing a separate bookmark for the child stream in which we are storing 
+                # We are writing a separate bookmark for the child stream in which we are storing
                 # the bookmark based on the parent's replication key.
                 # But, we are not using any fields from the child record for it.
                 # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
@@ -163,6 +166,7 @@ class TwitterAds(unittest.TestCase):
             "targeting_tv_markets":  {
                 self.PRIMARY_KEYS: {"locale"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False
             },
             "targeting_tv_shows": targeting_endpoint_metadata,
             "tweets": {

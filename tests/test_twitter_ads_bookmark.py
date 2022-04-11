@@ -137,7 +137,23 @@ class BookmarkTest(TwitterAds):
                     # We are writing a separate bookmark for the child stream in which we are storing
                     # the bookmark based on the parent's replication key.
                     # But, we are not using any fields from the child record for it.
-                    if stream != "targeting_criteria":
+                    # In addition to it, we are just using parent's primary key to fetch the child record but
+                    # we are not storing parent record any where.
+                    if stream == "targeting_criteria":
+                        # collect parent pk value for 1st sync
+                        first_sync_child_foreign_keys = set()
+                        for record in first_sync_messages:
+                            first_sync_child_foreign_keys.add(record['line_item_id'])
+
+                        # collect parent pk value for 2nd sync
+                        second_sync_child_foreign_keys = set()
+                        for record in second_sync_messages:
+                            second_sync_child_foreign_keys.add(record['line_item_id'])
+
+                        # Verify that all foreign keys in the 2nd sync are available in in 1st sync also. 
+                        self.assertTrue(second_sync_child_foreign_keys.issubset(first_sync_child_foreign_keys))
+                    
+                    else:
                         replication_key = next(iter(expected_replication_keys[stream]))
 
                         for record in first_sync_messages:
@@ -167,10 +183,9 @@ class BookmarkTest(TwitterAds):
 
                     # Verify the syncs do not set a bookmark for full table streams
                     self.assertIsNone(first_bookmark_value)
-                    self.assertIsNone(first_bookmark_value)
+                    self.assertIsNone(second_bookmark_value)
 
                     # Verify the number of records in the second sync is the same as the first
-
                     self.assertEqual(second_sync_count, first_sync_count)
 
                 else:

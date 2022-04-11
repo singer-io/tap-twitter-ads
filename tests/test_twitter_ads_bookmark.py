@@ -40,7 +40,10 @@ class BookmarkTest(TwitterAds):
 
         # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
         streams_to_test = streams_to_test - {'targeting_events'}
-        
+
+        # Invalid bookmark for tweets stream - https://jira.talendforge.org/browse/TDL-18465
+        streams_to_test = streams_to_test - {'tweets'}
+
         expected_replication_keys = self.expected_replication_keys()
         expected_replication_methods = self.expected_replication_method()
 
@@ -135,7 +138,7 @@ class BookmarkTest(TwitterAds):
                     for record in first_sync_messages:
 
                         # Verify the first sync bookmark value is the max replication key value for a given stream
-                        replication_key_value = record.get(replication_key)
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
 
                         self.assertLessEqual(
                             replication_key_value, first_bookmark_value_utc,
@@ -144,7 +147,7 @@ class BookmarkTest(TwitterAds):
 
                     for record in second_sync_messages:
                         # Verify the second sync replication key value is Greater or Equal to the first sync bookmark
-                        replication_key_value = record.get(replication_key)
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
 
                         self.assertGreaterEqual(replication_key_value, simulated_bookmark_value,
                                                 msg="Second sync records do not repect the previous bookmark.")
@@ -159,12 +162,12 @@ class BookmarkTest(TwitterAds):
 
                     # Verify the syncs do not set a bookmark for full table streams
                     self.assertIsNone(first_bookmark_value)
-                    self.assertIsNone(first_bookmark_value)
+                    self.assertIsNone(second_bookmark_value)
 
                     # Verify the number of records in the second sync is the same as the first
 
-                    # `targeting_criteria` is child stremas of parent stream `line_items` and tickets is incremental streams
-                    # Child stream also behave like incremental streams but does not save it's own state. So, it don't 
+                    # `targeting_criteria` is child streams of parent stream `line_items` and `line_items` is an incremental streams
+                    # Child stream also behave like incremental streams but does not save it's own state. So, it don't
                     # have same no of record on second sync and first sync.
                     if stream in ['targeting_criteria']:
                         continue

@@ -12,6 +12,7 @@ import pytz
 class TwitterAds(unittest.TestCase):
     start_date = ""
     START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
@@ -39,9 +40,9 @@ class TwitterAds(unittest.TestCase):
 
         return_value = {
             "account_ids": os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS"),
-            "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW") or "14",
-            "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED") or "true",
-            "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES") or "US, CA",
+            "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW"),
+            "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED"),
+            "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES"),
             "start_date": "2019-03-01T00:00:00Z",
             "page_size": self.PAGE_SIZE,
             "reports": [
@@ -72,7 +73,10 @@ class TwitterAds(unittest.TestCase):
             "TAP_TWITTER_ADS_CONSUMER_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
             "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-            "TAP_TWITTER_ADS_ACCOUNT_IDS"
+            "TAP_TWITTER_ADS_ACCOUNT_IDS",
+            "TAP_TWITTER_ADS_ATTRIBUTION_WINDOW",
+            "TAP_TWITTER_ADS_WITH_DELETED",
+            "TAP_TWITTER_ADS_COUNTRY_CODES"
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
         if missing_envs:
@@ -131,7 +135,7 @@ class TwitterAds(unittest.TestCase):
             "line_items": default_metadata,
             "targeting_criteria": {
                 # `targeting_criteria` is child stream of line_items stream which is incremental.
-                # We are writing a separate bookmark for the child stream in which we are storing 
+                # We are writing a separate bookmark for the child stream in which we are storing
                 # the bookmark based on the parent's replication key.
                 # But, we are not using any fields from the child record for it.
                 # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
@@ -163,6 +167,7 @@ class TwitterAds(unittest.TestCase):
             "targeting_tv_markets":  {
                 self.PRIMARY_KEYS: {"locale"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False
             },
             "targeting_tv_shows": targeting_endpoint_metadata,
             "tweets": {
@@ -336,7 +341,7 @@ class TwitterAds(unittest.TestCase):
             days, hours, minutes = timedelta_by_stream[stream]
             calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
 
-            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.START_DATE_FORMAT)
+            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
             stream_to_calculated_state[stream] = calculated_state_formatted
 

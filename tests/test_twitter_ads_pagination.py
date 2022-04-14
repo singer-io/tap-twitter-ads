@@ -23,7 +23,7 @@ class PaginationTest(TwitterAds):
         expected_streams = expected_streams - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report',
                                             'promoted_accounts', 'cards_image_direct_message', 'account_media', 'targeting_platforms',
-                                           'targeting_devices', 'funding_instruments', 'promotable_users', 'account', 'tailored_audiences'}
+                                           'targeting_devices', 'funding_instruments', 'promotable_users', 'account', 'tailored_audiences', 'targeting_tv_markets', 'targeting_tv_shows'}
 
         # Reduce page_size to 2 due to less data.
         self.run_test(expected_streams=expected_streams - {"targeting_locations", "targeting_conversations"}, page_size=2)    

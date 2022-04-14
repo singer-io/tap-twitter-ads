@@ -34,9 +34,6 @@ class StartDateTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
-        
-        # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
-        streams_to_test = streams_to_test - {'iab_categories', 'targeting_tv_markets'}
 
         # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
         streams_to_test = streams_to_test - {'targeting_events'}
@@ -44,7 +41,7 @@ class StartDateTest(TwitterAds):
         expected_replication_methods = self.expected_replication_method()
 
         self.start_date_1 = self.get_properties().get('start_date')
-        self.start_date_2 = "2022-04-04T12:50:00Z"
+        self.start_date_2 = "2022-04-05T00:00:00Z"
         self.start_date = self.start_date_1
 
         ##########################################################################

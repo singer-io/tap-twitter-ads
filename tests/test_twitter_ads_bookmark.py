@@ -36,7 +36,7 @@ class BookmarkTest(TwitterAds):
                                             'targeting_tv_markets', 'targeting_tv_shows'}
         
         # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
-        streams_to_test = streams_to_test - {'iab_categories', 'targeting_tv_markets'}
+        streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
 
         # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
         streams_to_test = streams_to_test - {'targeting_events'}

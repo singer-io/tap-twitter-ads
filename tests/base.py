@@ -186,21 +186,19 @@ class TwitterAds(unittest.TestCase):
         return set(self.expected_metadata().keys())
 
     def expected_primary_keys(self):
-        """
-        return a dictionary with key of table name and value as a set of primary key fields"""
+        """ return a dictionary with the key of table name and value as a set of primary key fields """
         return {table: properties.get(self.PRIMARY_KEYS) or set()
                 for table, properties
                 in self.expected_metadata().items()}
 
     def expected_replication_keys(self):
-        """
-        return a dictionary with key of table name and value as a set of replication key fields"""
+        """return a dictionary with the key of table name and value as a set of replication key fields"""
         return {table: properties.get(self.REPLICATION_KEYS, set())
                 for table, properties
                 in self.expected_metadata().items()}
 
     def expected_automatic_fields(self):
-        """return a dictionary with key of table name and value as a set of automatic key fields"""
+        """return a dictionary with the key of table name and value as a set of automatic key fields"""
 
         return {table: ((self.expected_primary_keys().get(table) or set()) |
                         (self.expected_replication_keys().get(table) or set()))

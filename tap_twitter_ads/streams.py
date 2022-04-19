@@ -87,21 +87,24 @@ class TwitterAds:
             raise err
         
     # get bookmark for the stream
-    def get_bookmark(self, state, stream, default):
+    def get_bookmark(self, state, stream, default, account_id):
         # default only populated on initial sync
         if (state is None) or ('bookmarks' not in state):
             return default
         return (
             state
             .get('bookmarks', {})
-            .get(stream, default)
+            .get(stream, {})
+            .get(account_id, default) # Return account wise bookmark value
         )
         
     # to read bookmarks in sync mode     
-    def write_bookmark(self, state, stream, value):
+    def write_bookmark(self, state, stream, value, account_id):
         if 'bookmarks' not in state:
             state['bookmarks'] = {}
-        state['bookmarks'][stream] = value
+
+        state['bookmarks'][stream] = state['bookmarks'].get(stream, {}) # Retrieve existing bookmark value
+        state['bookmarks'][stream][account_id] = value # Update bookmark value for particular account
         LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
         singer.write_state(state)   
             
@@ -233,7 +236,7 @@ class TwitterAds:
         LOGGER.info('sub_types = {}'.format(sub_types)) # COMMENT OUT
 
         # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, stream_name, start_date)
+        last_datetime = self.get_bookmark(state, stream_name, start_date, account_id)
         if not last_datetime or last_datetime is None:
             last_datetime = start_date
         last_dttm = strptime_to_utc(last_datetime)
@@ -445,7 +448,7 @@ class TwitterAds:
 
         # Update the state with the max_bookmark_value for the stream
         if bookmark_field:
-            self.write_bookmark(state, stream_name, max_bookmark_value)
+            self.write_bookmark(state, stream_name, max_bookmark_value, account_id)
 
         return total_records
         # End sync_endpoint
@@ -503,7 +506,7 @@ class Reports(TwitterAds):
         LOGGER.info('Account ID: {} - timezone: {}'.format(account_id, tzone))
 
         # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, report_name, start_date)
+        last_datetime = self.get_bookmark(state, report_name, start_date, account_id)
         last_dttm = strptime_to_utc(last_datetime).astimezone(timezone)
         max_bookmark_value = last_datetime
 
@@ -723,7 +726,7 @@ class Reports(TwitterAds):
                 # End: for async_results_url in async_results_urls
 
             # Update the state with the max_bookmark_value for the date window
-            self.write_bookmark(state, report_name, max_bookmark_value)
+            self.write_bookmark(state, report_name, max_bookmark_value, account_id)
 
             # Increment date window
             window_start = window_end

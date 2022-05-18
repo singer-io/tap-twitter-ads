@@ -41,7 +41,7 @@ class StartDateTest(TwitterAds):
         expected_replication_methods = self.expected_replication_method()
 
         self.start_date_1 = self.get_properties().get('start_date')
-        self.start_date_2 = "2022-04-05T00:00:00Z"
+        self.start_date_2 = "2022-04-06T00:00:00Z"
         self.start_date = self.start_date_1
 
         ##########################################################################

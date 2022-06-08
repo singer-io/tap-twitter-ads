@@ -1,0 +1,44 @@
+{
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "name": {
+        "type": ["null", "string"]
+      },
+      "components": {
+        "anyOf": [
+          {
+            "type": "array",
+            "items": {
+              "type": ["null", "object"],
+              "properties": {}
+            }
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "id": {
+        "type": ["null", "string"]
+      },
+      "created_at": {
+        "type": ["null", "string"],
+        "format": "date-time"
+      },
+      "card_uri": {
+        "type": ["null", "string"]
+      },
+      "updated_at": {
+        "type": ["null", "string"],
+        "format": "date-time"
+      },
+      "deleted": {
+        "type": ["null", "boolean"]
+      },
+      "card_type": {
+        "type": ["null", "string"]
+      }
+    }
+  }
+  

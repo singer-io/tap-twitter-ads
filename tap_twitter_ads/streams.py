@@ -1089,59 +1089,16 @@ class Campaigns(TwitterAds):
         'cursor': None
     }
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/website#website-cards
-class CardsWebsite(TwitterAds):
-    tap_stream_id = "cards_website"
-    path = 'accounts/{account_id}/cards/website'
+# Reference: https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards
+class Cards(TwitterAds):
+    tap_stream_id = "cards"
+    path = 'accounts/{account_id}/cards'
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'INCREMENTAL'
     replication_keys = ['updated_at']
     params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-class CardsVideoWebsite(TwitterAds):
-    tap_stream_id = "cards_video_website"
-    path = 'accounts/{account_id}/cards/video_website'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-app-download#image-app-download-cards
-class CardsImageAppDownload(TwitterAds):
-    tap_stream_id = "cards_image_app_download"
-    path = 'accounts/{account_id}/cards/image_app_download'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-app-download#video-app-download-cards
-class CardsVideoAppDownload(TwitterAds):
-    tap_stream_id = "cards_video_app_download"
-    path = 'accounts/{account_id}/cards/video_app_download'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
+        'include_legacy_cards': 'true',
         'sort_by': ['updated_at-desc'],
         'with_deleted': '{with_deleted}',
         'count': 1000,
@@ -1182,36 +1139,6 @@ class CardsImageConversation(TwitterAds):
 class CardsVideoConversation(TwitterAds):
     tap_stream_id = "cards_video_conversation"
     path = 'accounts/{account_id}/cards/video_conversation'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-direct-message#image-direct-message-cards
-class CardsImageDirectMessage(TwitterAds):
-    tap_stream_id = "cards_image_direct_message"
-    path = 'accounts/{account_id}/cards/image_direct_message'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-direct-message#video-direct-message-cards
-class CardsVideoDirectMessage(TwitterAds):
-    tap_stream_id = "cards_video_direct_message"
-    path = 'accounts/{account_id}/cards/video_direct_message'
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'INCREMENTAL'
@@ -1563,17 +1490,11 @@ STREAMS = {
     "accounts": Accounts,
     "account_media": AccountMedia,
     "advertiser_business_categories": AdvertiserBusinessCategories,
-    "bidding_rules": BiddingRules,
     "campaigns": Campaigns,
-    "cards_website": CardsWebsite,
-    "cards_video_website": CardsVideoWebsite,
-    "cards_image_app_download": CardsImageAppDownload,
-    "cards_video_app_download": CardsVideoAppDownload,
+    "cards": Cards,
     "cards_poll": CardsPoll,
     "cards_image_conversation": CardsImageConversation,
     "cards_video_conversation": CardsVideoConversation,
-    "cards_image_direct_message": CardsImageDirectMessage,
-    "cards_video_direct_message": CardsVideoDirectMessage,
     "content_categories": ContentCategories,
     "funding_instruments": FundingInstruments,
     "iab_categories": IabCategories,

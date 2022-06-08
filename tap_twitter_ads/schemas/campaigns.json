@@ -8,10 +8,6 @@
     "name": {
       "type": ["null", "string"]
     },
-    "start_time": {
-      "type": ["null", "string"],
-      "format": "date-time"
-    },
     "reasons_not_servable": {
       "anyOf": [
         {
@@ -30,10 +26,6 @@
     },
     "daily_budget_amount_local_micro": {
       "type": ["null", "integer"]
-    },
-    "end_time": {
-      "type": ["null", "string"],
-      "format": "date-time"
     },
     "funding_instrument_id": {
       "type": ["null", "string"]
@@ -69,6 +61,9 @@
     },
     "deleted": {
       "type": ["null", "boolean"]
+    },
+    "budget_optimization": {
+      "type": ["null", "string"]
     }
   }
 }

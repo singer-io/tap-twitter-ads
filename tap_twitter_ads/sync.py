@@ -187,6 +187,11 @@ def sync_endpoint(client,
     id_fields = endpoint_config.get('key_properties', [])
     parent_id_field = next(iter(id_fields), None) # first ID field
     params = endpoint_config.get('params', {})
+
+    # If page_size found in config then used it else use default page size.
+    if params.get('count') and tap_config.get('page_size'):
+        params['count'] = tap_config['page_size']
+
     bookmark_field = next(iter(endpoint_config.get('replication_keys', [])), None)
     datetime_format = endpoint_config.get('datetime_format')
     sub_types = endpoint_config.get('sub_types', ['none'])

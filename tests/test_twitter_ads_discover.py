@@ -27,7 +27,6 @@ class DiscoverTest(TwitterAds):
         • verify the actual replication matches our expected replication method
         • verify that primary, replication keys are given the inclusion of automatic.
         • verify that all other fields have inclusion of available metadata.
-       
         """
         streams_to_test = self.expected_streams()
 
@@ -39,11 +38,10 @@ class DiscoverTest(TwitterAds):
         found_catalog_names = {c['tap_stream_id'] for c in found_catalogs}
 
         # Verify stream names follow naming convention
-        # streams should only have lowercase alphas and underscores       
+        # streams should only have lowercase alphas and underscores
         self.assertTrue(all([re.fullmatch(r"[a-z_]+",  name) for name in found_catalog_names]),
                       msg="One or more streams don't follow standard naming")
 
-        
         for stream in streams_to_test:
             with self.subTest(stream=stream):
 
@@ -92,7 +90,7 @@ class DiscoverTest(TwitterAds):
                                 "\nstream_properties | {}".format(stream_properties))
 
                 # verify there are no duplicate metadata entries
-                self.assertEqual(len(actual_fields), len(set(actual_fields)), msg = f"duplicates in the fields retrieved")
+                self.assertEqual(len(actual_fields), len(set(actual_fields)), msg = "duplicates in the fields retrieved")
 
                 # verify replication key(s) match expectations
                 self.assertEqual(expected_replication_keys, actual_replication_keys,
@@ -122,9 +120,7 @@ class DiscoverTest(TwitterAds):
 
                 # verify that primary keys and replication keys
                 # are given the inclusion of automatic in metadata.
-
-                # Bug - https://jira.talendforge.org/browse/TDL-18068
-                # self.assertSetEqual(expected_automatic_fields, actual_automatic_fields)
+                self.assertSetEqual(expected_automatic_fields, actual_automatic_fields)
 
                 # verify that all other fields have inclusion of available
                 field_metadata = [item for item in metadata if item["breadcrumb"] != []]

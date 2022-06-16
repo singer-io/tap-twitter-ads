@@ -6,7 +6,7 @@ from base import TwitterAds
 
 class BookmarkTest(TwitterAds):
     """Test tap sets a bookmark and respects it for the next sync of a stream"""
-    
+
     def name(self):
         return "tap_tester_twitter_ads_bookmark_test"
 
@@ -34,21 +34,15 @@ class BookmarkTest(TwitterAds):
         streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
                                             'targeting_tv_markets', 'targeting_tv_shows'}
-        
+
         # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
         streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
 
         # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
         streams_to_test = streams_to_test - {'targeting_events'}
-        
+
         # Invalid bookmark for tweets stream - https://jira.talendforge.org/browse/TDL-18465
         streams_to_test = streams_to_test - {'tweets'}
-        
-        # Make child streams independent of parent stream https://jira.talendforge.org/browse/TDL-18089 
-        streams_to_test = streams_to_test - {'bidding_rules'}
-
-        # Deprecated stream
-        streams_to_test = streams_to_test - {'targeting_criteria'}
 
         expected_replication_keys = self.expected_replication_keys()
         expected_replication_methods = self.expected_replication_method()
@@ -121,6 +115,8 @@ class BookmarkTest(TwitterAds):
                 if expected_replication_method == self.INCREMENTAL:
 
                     # collect information specific to incremental streams from syncs 1 & 2
+                    replication_key = next(
+                        iter(expected_replication_keys[stream]))
                     first_bookmark_value_utc = self.convert_state_to_utc(
                         first_bookmark_value)
                     second_bookmark_value_utc = self.convert_state_to_utc(
@@ -139,49 +135,28 @@ class BookmarkTest(TwitterAds):
                     # assumes no changes to data during test
                     self.assertEqual(second_bookmark_value, first_bookmark_value)
 
-                    # `targeting_criteria` is child stream of line_items stream which is incremental.
-                    # We are writing a separate bookmark for the child stream in which we are storing
-                    # the bookmark based on the parent's replication key.
-                    # But, we are not using any fields from the child record for it.
-                    if stream == "targeting_criteria":
-                        # collect parent pk value for 1st sync
-                        first_sync_child_foreign_keys = set()
-                        for record in first_sync_messages:
-                            first_sync_child_foreign_keys.add(record['line_item_id'])
+                    for record in first_sync_messages:
 
-                        # collect parent pk value for 2nd sync
-                        second_sync_child_foreign_keys = set()
-                        for record in second_sync_messages:
-                            second_sync_child_foreign_keys.add(record['line_item_id'])
+                        # Verify the first sync bookmark value is the max replication key value for a given stream
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
 
-                        # Verify that all foreign keys in the 2nd sync are available in in 1st sync also. 
-                        self.assertTrue(second_sync_child_foreign_keys.issubset(first_sync_child_foreign_keys))
-                    
-                    else:
-                        replication_key = next(iter(expected_replication_keys[stream]))
+                        self.assertLessEqual(
+                            replication_key_value, first_bookmark_value_utc,
+                            msg="First sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
+                        )
 
-                        for record in first_sync_messages:
+                    for record in second_sync_messages:
+                        # Verify the second sync replication key value is Greater or Equal to the first sync bookmark
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
 
-                            # Verify the first sync bookmark value is the max replication key value for a given stream
-                            replication_key_value = self.convert_state_to_utc(record.get(replication_key))
+                        self.assertGreaterEqual(replication_key_value, simulated_bookmark_value,
+                                                msg="Second sync records do not repect the previous bookmark.")
 
-                            self.assertLessEqual(
-                                replication_key_value, first_bookmark_value_utc,
-                                msg="First sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
-                            )
-
-                        for record in second_sync_messages:
-                            # Verify the second sync replication key value is Greater or Equal to the first sync bookmark
-                            replication_key_value = self.convert_state_to_utc(record.get(replication_key))
-
-                            self.assertGreaterEqual(replication_key_value, simulated_bookmark_value,
-                                                    msg="Second sync records do not repect the previous bookmark.")
-
-                            # Verify the second sync bookmark value is the max replication key value for a given stream
-                            self.assertLessEqual(
-                                replication_key_value, second_bookmark_value_utc,
-                                msg="Second sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
-                            )
+                        # Verify the second sync bookmark value is the max replication key value for a given stream
+                        self.assertLessEqual(
+                            replication_key_value, second_bookmark_value_utc,
+                            msg="Second sync bookmark was set incorrectly, a record with a greater replication-key value was synced."
+                        )
 
                 elif expected_replication_method == self.FULL_TABLE:
 
@@ -190,6 +165,13 @@ class BookmarkTest(TwitterAds):
                     self.assertIsNone(second_bookmark_value)
 
                     # Verify the number of records in the second sync is the same as the first
+
+                    # `targeting_criteria` is child streams of parent stream `line_items` and `line_items` is an incremental streams
+                    # Child stream also behave like incremental streams but does not save it's own state. So, it don't
+                    # have same no of record on second sync and first sync.
+                    if stream in ['targeting_criteria']:
+                        continue
+
                     self.assertEqual(second_sync_count, first_sync_count)
 
                 else:

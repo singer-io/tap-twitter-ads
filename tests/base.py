@@ -136,6 +136,11 @@ class TwitterAds(unittest.TestCase):
             },
             "line_items": default_metadata,
             "targeting_criteria": {
+                # `targeting_criteria` is child stream of line_items stream which is incremental.
+                # We are writing a separate bookmark for the child stream in which we are storing
+                # the bookmark based on the parent's replication key.
+                # But, we are not using any fields from the child record for it.
+                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                 self.PRIMARY_KEYS: {"line_item_id", "id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
                 self.OBEYS_START_DATE: True

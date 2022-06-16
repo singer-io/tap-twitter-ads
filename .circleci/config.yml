@@ -23,7 +23,8 @@ jobs:
           path: test_output/report.xml
       - store_artifacts:
           path: htmlcov
-      - name: 'pylint'
+      - run:
+          name: 'pylint'
           command: |
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
             pylint tap_twitter_ads -d C,R,W

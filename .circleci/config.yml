@@ -12,9 +12,20 @@ jobs:
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
             pip install -U 'pip<19.2' 'setuptools<51.0.0'
             pip install .[dev]
+      - run:
+          name: 'pylint'
+          command: |
+            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
+            pylint tap_twitter_ads -d C,R,W
+      - run:
+          name: 'JSON Validator'
+          command: |
+            source /usr/local/share/virtualenvs/tap-tester/bin/activate
+            stitch-validate-json tap_twitter_ads/schemas/*.json
       - add_ssh_keys
       - run:
           name: 'Integration Tests'
+          no_output_timeout: 60m
           command: |
             aws s3 cp s3://com-stitchdata-dev-deployment-assets/environments/tap-tester/tap_tester_sandbox dev_env.sh
             source dev_env.sh

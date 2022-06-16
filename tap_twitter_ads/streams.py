@@ -216,6 +216,11 @@ class TwitterAds:
         id_fields = (hasattr(endpoint_config, 'key_properties') or []) and endpoint_config.key_properties
         parent_id_field = next(iter(id_fields), None) # first ID field
         params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
+
+        # If page_size found in config then used it else use default page size.
+        if params.get('count') and tap_config.get('page_size'):
+            params['count'] = tap_config['page_size']
+
         bookmark_field = next(iter((hasattr(endpoint_config, 'replication_keys') or []) and endpoint_config.replication_keys), None)
         datetime_format = hasattr(endpoint_config,'datetime_format') and endpoint_config.datetime_format
         if hasattr(endpoint_config, 'sub_types'):
@@ -726,7 +731,7 @@ class Reports(TwitterAds):
 
                 # TRANSFORM REPORT DATA
                 transformed_data = []
-                transformed_data = self.transform_report(report_name, async_data, account_id)
+                transformed_data = transform_report(report_name, async_data, account_id)
                 # LOGGER.info('transformed_data = {}'.format(transformed_data)) # COMMENT OUT
                 if transformed_data is None or transformed_data == []:
                     LOGGER.info('Report: {} - NO TRANSFORMED DATA for URL: {}'.format(
@@ -1100,14 +1105,20 @@ class AdvertiserBusinessCategories(TwitterAds):
     replication_method = 'FULL_TABLE'
     params = {}
 
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/bidding-rules#bidding-rules
-class BiddingRules(TwitterAds):
-    tap_stream_id = "bidding_rules"
-    path = 'bidding_rules'
+# Reference: https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags
+class TrackingTags(TwitterAds):
+    tap_stream_id = "tracking_tags"
+    path = 'accounts/{account_id}/tracking_tags'
     data_key = 'data'
-    key_properties = ['currency']
-    replication_method = 'FULL_TABLE'
-    params = {}
+    key_properties = ['id']
+    replication_method = 'INCREMENTAL'
+    replication_keys = ['updated_at']
+    params = {
+        'sort_by': ['updated_at-desc'],
+        'with_deleted': '{with_deleted}',
+        'count': 1000,
+        'cursor': None
+    }
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns
 class Campaigns(TwitterAds):
@@ -1459,10 +1470,7 @@ class TargetingDevices(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
 class TargetingEvents(TwitterAds):
@@ -1547,10 +1555,7 @@ class TargetingPlatforms(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-shows
 class TargetingTVShows(TwitterAds):
@@ -1604,7 +1609,7 @@ STREAMS = {
     "accounts": Accounts,
     "account_media": AccountMedia,
     "advertiser_business_categories": AdvertiserBusinessCategories,
-    "bidding_rules": BiddingRules,
+    "tracking_tags": TrackingTags,
     "campaigns": Campaigns,
     "cards_website": CardsWebsite,
     "cards_video_website": CardsVideoWebsite,

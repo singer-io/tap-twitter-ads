@@ -1,5 +1,5 @@
 {
-  "type": "object",
+  "type": ["null", "object"],
   "additionalProperties": false,
   "properties": {
     "__sdc_dimensions_hash_key": {

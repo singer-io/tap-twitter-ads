@@ -112,15 +112,10 @@ class TwitterAds(unittest.TestCase):
                 self.OBEYS_START_DATE: False
             },
             "campaigns": default_metadata,
-            "cards_website": default_metadata,
-            "cards_video_website": default_metadata,
-            "cards_image_app_download": default_metadata,
-            "cards_video_app_download": default_metadata,
+            "cards": default_metadata,
             "cards_poll": default_metadata,
             "cards_image_conversation": default_metadata,
             "cards_video_conversation": default_metadata,
-            "cards_image_direct_message": default_metadata,
-            "cards_video_direct_message": default_metadata,
             "content_categories": {
                 self.PRIMARY_KEYS: {"id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,

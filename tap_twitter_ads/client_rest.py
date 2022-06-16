@@ -12,7 +12,7 @@ import singer
 
 LOGGER = singer.get_logger()
 
-ADS_API_VERSION = '6'
+ADS_API_VERSION = '10'
 ADS_API_URL = 'https://ads-api.twitter.com'
 DEFAULT_CONNECTION_TIMEOUT = 5
 DEFAULT_REST_TIMEOUT = 5

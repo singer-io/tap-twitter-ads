@@ -341,7 +341,7 @@ class TwitterAds(unittest.TestCase):
             days, hours, minutes = timedelta_by_stream[stream]
             calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
 
-            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.START_DATE_FORMAT)
+            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
             stream_to_calculated_state[stream] = calculated_state_formatted
 

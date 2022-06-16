@@ -112,7 +112,7 @@ def get_schemas(reports):
             replication_method=(hasattr(stream_metadata, 'replication_method') or None) and stream_metadata.replication_method
         )
         # make replication keys of automatic inclusion
-        mdata = make_replication_key_automatic(mdata, schema, stream_metadata.get('replication_keys'))
+        mdata = make_replication_key_automatic(mdata, schema, (hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys)
 
         field_metadata[stream_name] = mdata
 

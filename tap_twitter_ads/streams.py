@@ -696,7 +696,7 @@ class Reports(TwitterAds):
 
                 # TRANSFORM REPORT DATA
                 transformed_data = []
-                transformed_data = self.transform_report(report_name, async_data, account_id)
+                transformed_data = transform_report(report_name, async_data, account_id)
                 # LOGGER.info('transformed_data = {}'.format(transformed_data)) # COMMENT OUT
                 if transformed_data is None or transformed_data == []:
                     LOGGER.info('Report: {} - NO TRANSFORMED DATA for URL: {}'.format(

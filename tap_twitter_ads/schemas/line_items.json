@@ -1,14 +1,11 @@
 {
-  "type": "object",
+  "type": ["null", "object"],
   "additionalProperties": false,
   "properties": {
     "account_id": {
       "type": ["null", "string"]
     },
     "bid_type": {
-      "type": ["null", "string"]
-    },
-    "bid_strategy": {
       "type": ["null", "string"]
     },
     "advertiser_user_id": {

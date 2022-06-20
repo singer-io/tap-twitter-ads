@@ -15,17 +15,25 @@ class BookmarkTest(TwitterAds):
         return "tap_tester_twitter_ads_bookmark_test"
 
     def test_run(self):
+        
+        # Run test with the bookmark of SCHEDULED subtype in the state.
+        self.run_bookmark(True)
+        
+        # Run test without the bookmark of SCHEDULED subtype in the state.
+        self.run_bookmark(False)
+
+    def run_bookmark(self, add_schedule_bookmark):
         """
-        Verify that for each stream you can do a sync which records bookmarks.
+        Verify that for each stream you can do a sync that records bookmarks.
         That the bookmark is the maximum value sent to the target for the replication key.
         That a second sync respects the bookmark
             All data of the second sync is >= the bookmark from the first sync
-            The number of records in the 2nd sync is less then the first (This assumes that
+            The number of records in the 2nd sync is less than the first (This assumes that
                 new data added to the stream is done at a rate slow enough that you haven't
                 doubled the amount of data from the start date to the first sync between
                 the first sync and second sync run in this test)
         PREREQUISITE
-        For EACH stream that is incrementally replicated there are multiple rows of data with
+        For EACH stream that is incrementally replicated, there are multiple rows of data with
             different values for the replication key
         """
         
@@ -75,7 +83,9 @@ class BookmarkTest(TwitterAds):
         calculated_scheduled_state_formatted = dt.strftime(calculated_scheduled_state_as_datetime, datetime_format)
 
         new_states['bookmarks']['tweets']['PUBLISHED'] = calculated_published_state_formatted
-        new_states['bookmarks']['tweets']['SCHEDULED'] = calculated_scheduled_state_formatted
+        # Add bookmark value of SCHEDULED subtype in the state.
+        if add_schedule_bookmark:
+            new_states['bookmarks']['tweets']['SCHEDULED'] = calculated_scheduled_state_formatted
 
         menagerie.set_state(conn_id, new_states)
 
@@ -127,8 +137,9 @@ class BookmarkTest(TwitterAds):
                     second_scheduled_bookmark_value)
                 
                 simulated_published_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream]['PUBLISHED'])
-                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream]['SCHEDULED'])
-
+                
+                # Records will respect the start_date in case of bookmark for SCHEDULED subtype is not present in state
+                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream]['SCHEDULED'] if add_schedule_bookmark else self.get_properties()["start_date"])
                 
                 # Verify the first sync sets both bookmarks of the expected form
                 self.assertIsNotNone(first_published_bookmark_value_utc)

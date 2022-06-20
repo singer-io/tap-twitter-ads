@@ -258,7 +258,7 @@ class TwitterAds:
 
             if stream_name == "tweets" and last_datetime != start_date:
                 # tweets stream contain two separate bookmark for each sub_type(PUBLISHED, SCHEDULED)
-                last_dttm = strptime_to_utc(last_datetime.get(sub_type))
+                last_dttm = strptime_to_utc(last_datetime.get(sub_type, start_date))
             else:
                 last_dttm = strptime_to_utc(last_datetime)
 

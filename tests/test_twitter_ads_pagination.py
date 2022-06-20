@@ -2,6 +2,7 @@ import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
 from base import TwitterAds
+import json
 
 class PaginationTest(TwitterAds):
     """
@@ -36,11 +37,6 @@ class PaginationTest(TwitterAds):
     def run_test(self, expected_streams, page_size):
 
         streams_to_test = expected_streams
-        # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
-        streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
-
-        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-        streams_to_test = streams_to_test - {'targeting_events'}
 
         self.PAGE_SIZE = page_size
 

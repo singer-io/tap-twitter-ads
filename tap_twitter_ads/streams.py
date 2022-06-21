@@ -1340,7 +1340,6 @@ class TargetingCriteria(TwitterAds):
     data_key = 'data'
     key_properties = ['line_item_id', 'id']
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
     parent_ids_limit = 200
     params = {
         'line_item_ids': '{parent_ids}', # up to 200 comma delim ids

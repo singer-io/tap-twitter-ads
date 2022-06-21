@@ -8,6 +8,9 @@
     "bid_type": {
       "type": ["null", "string"]
     },
+    "bid_strategy": {
+      "type": ["null", "string"]
+    },
     "advertiser_user_id": {
       "type": ["null", "integer"]
     },

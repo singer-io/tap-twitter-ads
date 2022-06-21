@@ -118,12 +118,12 @@ class BookmarkTest(TwitterAds):
                     replication_key = next(
                         iter(expected_replication_keys[stream]))
                     first_bookmark_value_utc = self.convert_state_to_utc(
-                        first_bookmark_value)
+                        first_bookmark_value, self.BOOKMARK_FORMAT)
                     second_bookmark_value_utc = self.convert_state_to_utc(
-                        second_bookmark_value)
+                        second_bookmark_value, self.BOOKMARK_FORMAT)
 
 
-                    simulated_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id])
+                    simulated_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id], self.BOOKMARK_FORMAT)
 
                     # Verify the first sync sets a bookmark of the expected form
                     self.assertIsNotNone(first_bookmark_value)
@@ -138,7 +138,7 @@ class BookmarkTest(TwitterAds):
                     for record in first_sync_messages:
 
                         # Verify the first sync bookmark value is the max replication key value for a given stream
-                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key), self.BOOKMARK_FORMAT)
 
                         self.assertLessEqual(
                             replication_key_value, first_bookmark_value_utc,
@@ -147,7 +147,7 @@ class BookmarkTest(TwitterAds):
 
                     for record in second_sync_messages:
                         # Verify the second sync replication key value is Greater or Equal to the first sync bookmark
-                        replication_key_value = self.convert_state_to_utc(record.get(replication_key))
+                        replication_key_value = self.convert_state_to_utc(record.get(replication_key), self.BOOKMARK_FORMAT)
 
                         self.assertGreaterEqual(replication_key_value, simulated_bookmark_value,
                                                 msg="Second sync records do not repect the previous bookmark.")

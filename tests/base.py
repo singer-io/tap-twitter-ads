@@ -11,8 +11,7 @@ import pytz
 
 class TwitterAds(unittest.TestCase):
     start_date = ""
-    START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
-    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%Z"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
@@ -343,11 +342,11 @@ class TwitterAds(unittest.TestCase):
 
             calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
-            stream_to_calculated_state[stream]["18ce558llv7"] = calculated_state_formatted
+            stream_to_calculated_state[stream][self.account_id] = calculated_state_formatted
 
         return stream_to_calculated_state
 
-    def convert_state_to_utc(self, date_str):
+    def convert_state_to_utc(self, date_str, bookmark_format):
         """
         Convert a saved bookmark value of the form '2020-08-25T13:17:36-07:00' to
         a string formatted utc datetime,
@@ -355,14 +354,4 @@ class TwitterAds(unittest.TestCase):
         """
         date_object = dateutil.parser.parse(date_str)
         date_object_utc = date_object.astimezone(tz=pytz.UTC)
-        return dt.strftime(date_object_utc, "%Y-%m-%dT%H:%M:%SZ")
-
-    def timedelta_formatted(self, dtime, days=0):
-        try:
-            date_stripped = dt.strptime(dtime, self.START_DATE_FORMAT)
-            return_date = date_stripped + timedelta(days=days)
-
-            return dt.strftime(return_date, self.START_DATE_FORMAT)
-
-        except ValueError:
-                return Exception("Datetime object is not of the format: {}".format(self.START_DATE_FORMAT))
+        return dt.strftime(date_object_utc, bookmark_format)

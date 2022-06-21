@@ -7,7 +7,7 @@ class TestBookmark(unittest.TestCase):
     """
     stream = "dummy_stream"
     default = "2018-01-28T00:00:00Z"
-    account_id = "account_1"
+    account_id = "account_id"
     twitter_ads_object = TwitterAds()
     
     def test_empty_bookmark(self):
@@ -27,7 +27,7 @@ class TestBookmark(unittest.TestCase):
         
         self.assertEqual(bookmark, self.default)
 
-    def test_account_1_valid_bookmark(self):
+    def test_valid_bookmark(self):
         """ Test that if the valid bookmark is available in the state then it returns the bookmark value """
 
         state = {'bookmarks': {self.stream: {self.account_id: "2017-01-28T00:00:00Z"}}}
@@ -36,7 +36,7 @@ class TestBookmark(unittest.TestCase):
         
         self.assertEqual(bookmark, "2017-01-28T00:00:00Z")
 
-    def test_account_1_null_bookmark(self):
+    def test_null_bookmark(self):
         """ Test that if the bookmark value is None in the state then it returns None"""
 
         state = {'bookmarks': {self.stream: {self.account_id: None}}}

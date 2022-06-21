@@ -416,7 +416,7 @@ class TwitterAds:
 
             # Update the state with the max_bookmark_value for the tweets stream
             if stream_name == "tweets":
-                self.write_bookmark(state, stream_name, max_bookmark_value, sub_type)
+                self.write_bookmark(state, stream_name, max_bookmark_value, account_id, sub_type)
                 max_bookmark_dttm = None
 
             # Loop through children and chunks of parent_ids

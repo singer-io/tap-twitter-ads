@@ -64,28 +64,28 @@ class BookmarkTest(TwitterAds):
         # Update State Between Syncs
         ##########################################################################
 
-        new_states = {'bookmarks': {'tweets': {}}}
+        new_states = {'bookmarks': {'tweets': {self.account_id: {}}}}
         
         datetime_format = "%a %b %d %H:%M:%S %z %Y"
         
         # state for tweet_type of PUBLISHED
-        published_tweets_state_as_datetime = dateutil.parser.parse(first_sync_bookmarks['bookmarks']['tweets']['PUBLISHED'])
+        published_tweets_state_as_datetime = dateutil.parser.parse(first_sync_bookmarks['bookmarks']['tweets'][self.account_id]['PUBLISHED'])
         calculated_published_state_as_datetime = published_tweets_state_as_datetime - timedelta(days=0, hours=0, minutes=1)
         
         # simulate state for PUBLISHED tweets
         calculated_published_state_formatted = dt.strftime(calculated_published_state_as_datetime, datetime_format)
 
         # state for tweet_type of SCHEDULED
-        scheduled_tweets_state_as_datetime = dateutil.parser.parse(first_sync_bookmarks['bookmarks']['tweets']['SCHEDULED'])
+        scheduled_tweets_state_as_datetime = dateutil.parser.parse(first_sync_bookmarks['bookmarks']['tweets'][self.account_id]['SCHEDULED'])
         calculated_scheduled_state_as_datetime = scheduled_tweets_state_as_datetime - timedelta(days=0, hours=0, minutes=1)
 
         # simulate state for SCHEDULED tweets
         calculated_scheduled_state_formatted = dt.strftime(calculated_scheduled_state_as_datetime, datetime_format)
 
-        new_states['bookmarks']['tweets']['PUBLISHED'] = calculated_published_state_formatted
+        new_states['bookmarks']['tweets'][self.account_id]['PUBLISHED'] = calculated_published_state_formatted
         # Add bookmark value of SCHEDULED subtype in the state.
         if add_schedule_bookmark:
-            new_states['bookmarks']['tweets']['SCHEDULED'] = calculated_scheduled_state_formatted
+            new_states['bookmarks']['tweets'][self.account_id]['SCHEDULED'] = calculated_scheduled_state_formatted
 
         menagerie.set_state(conn_id, new_states)
 
@@ -116,30 +116,30 @@ class BookmarkTest(TwitterAds):
                                             stream, {}).get('messages', [])
                                         if record.get('action') == 'upsert']
                 # Get bookmark for PUBLISHED tweets
-                first_published_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get('PUBLISHED')
-                second_published_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get('PUBLISHED')
+                first_published_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id,{}).get('PUBLISHED')
+                second_published_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id,{}).get('PUBLISHED')
                 
                 # Get bookmark for SCHEDULED tweets
-                first_scheduled_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get('SCHEDULED')
-                second_scheduled_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get('SCHEDULED')
+                first_scheduled_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id,{}).get('SCHEDULED')
+                second_scheduled_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id,{}).get('SCHEDULED')
 
                 # collect information specific to incremental streams from syncs 1 & 2
                 replication_key = next(
                     iter(expected_replication_keys[stream]))
                 first_published_bookmark_value_utc = self.convert_state_to_utc(
-                    first_published_bookmark_value)
+                    first_published_bookmark_value, self.BOOKMARK_FORMAT)
                 second_published_bookmark_value_utc = self.convert_state_to_utc(
-                    second_published_bookmark_value)
+                    second_published_bookmark_value, self.BOOKMARK_FORMAT)
 
                 first_scheduled_bookmark_value_utc = self.convert_state_to_utc(
-                    first_scheduled_bookmark_value)
+                    first_scheduled_bookmark_value, self.BOOKMARK_FORMAT)
                 second_scheduled_bookmark_value_utc = self.convert_state_to_utc(
-                    second_scheduled_bookmark_value)
+                    second_scheduled_bookmark_value, self.BOOKMARK_FORMAT)
                 
-                simulated_published_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream]['PUBLISHED'])
+                simulated_published_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['PUBLISHED'], self.BOOKMARK_FORMAT)
                 
                 # Records will respect the start_date in case of bookmark for SCHEDULED subtype is not present in state
-                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream]['SCHEDULED'] if add_schedule_bookmark else self.get_properties()["start_date"])
+                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['SCHEDULED'] if add_schedule_bookmark else self.get_properties()["start_date"], self.BOOKMARK_FORMAT)
                 
                 # Verify the first sync sets both bookmarks of the expected form
                 self.assertIsNotNone(first_published_bookmark_value_utc)

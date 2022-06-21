@@ -137,7 +137,7 @@ def sync(client, config, catalog, state):
 
                 LOGGER.info('Report: {} - START Syncing for Account ID: {}'.format(
                     report_name, account_id))
-                
+
                 # Write schema and log selected fields for stream
                 reports_obj.write_schema(catalog, report_name)
 

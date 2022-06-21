@@ -107,6 +107,8 @@ class TwitterAds:
 
         if sub_type:
             # Store bookmark value for each sub_type of tweets stream
+            # Retrieve existing bookmark value if it is available in the state or assign empty dict.
+            # Because we need to write bookmark value for each sub type inside the account_id. 
             state['bookmarks'][stream][account_id] = state['bookmarks'].get(stream, {}).get(account_id, {})
             state['bookmarks'][stream][account_id][sub_type] = value
             LOGGER.info('Stream: {} Subtype: {} - Write state, bookmark value: {}'.format(stream, sub_type, value))
@@ -262,7 +264,7 @@ class TwitterAds:
         for sub_type in sub_types:
 
             if stream_name == "tweets" and last_datetime != start_date:
-                # tweets stream contain two separate bookmark for each sub_type(PUBLISHED, SCHEDULED)
+                # Tweets stream contains two separate bookmarks for each sub_type(PUBLISHED, SCHEDULED)
                 last_dttm = strptime_to_utc(last_datetime.get(sub_type, start_date))
             else:
                 last_dttm = strptime_to_utc(last_datetime)

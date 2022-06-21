@@ -40,6 +40,22 @@ def update_currently_syncing(state, stream_name):
     singer.write_state(state)
     LOGGER.info('Stream: {} - Currently Syncing'.format(stream_name))
 
+def get_page_size(config, default_page_size):
+    """
+    This function will get page size from config,
+    and will return the default value if an invalid page size is given.
+    """
+    page_size = config.get('page_size', default_page_size)
+    try:
+        if int(float(page_size)) > 0:
+            return int(float(page_size))
+        else:
+            LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
+            return default_page_size
+    except Exception:
+        LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
+        return default_page_size
+
 # parent class for all the stream classes
 class TwitterAds:
     tap_stream_id = None
@@ -212,7 +228,7 @@ class TwitterAds:
 
         # If page_size found in config then used it else use default page size.
         if params.get('count') and tap_config.get('page_size'):
-            params['count'] = tap_config['page_size']
+            params['count'] = get_page_size(tap_config, params.get('count'))
 
         bookmark_field = next(iter((hasattr(endpoint_config, 'replication_keys') or []) and endpoint_config.replication_keys), None)
         datetime_format = hasattr(endpoint_config,'datetime_format') and endpoint_config.datetime_format

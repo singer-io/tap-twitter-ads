@@ -490,7 +490,7 @@ class TwitterAds:
             # pylint: enable=line-too-long
             # End: for sub_type in sub_types
 
-        # Update the state with the max_bookmark_value for the stream except tweets stream
+        # Update the state with the max_bookmark_value for all other streams except tweets stream
         if bookmark_field  and stream_name != "tweets":
             self.write_bookmark(state, stream_name, max_bookmark_value, account_id)
 

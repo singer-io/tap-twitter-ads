@@ -25,6 +25,7 @@ from twitter_ads.utils import split_list
 from singer.utils import strptime_to_utc
 from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
+from tap_twitter_ads.client import raise_for_error
 
 LOGGER = singer.get_logger()
 
@@ -146,11 +147,11 @@ class TwitterAds:
         
         try:
             request = Request(client, 'get', resource, params=params) #, stream=True)
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, err.details))
-            raise err
-        cursor = Cursor(None, request)
+            cursor = Cursor(None, request)
+        except Exception as e:
+            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e.details))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         return cursor
 
     # method for HTTP post api call
@@ -158,10 +159,10 @@ class TwitterAds:
         resource = '/{}/{}'.format(API_VERSION, path)
         try:
             response = Request(client, 'post', resource, params=params, body=body).perform()
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         response_body = response.body # Dictionary response of POST request
         return response_body
 
@@ -173,10 +174,10 @@ class TwitterAds:
             response = Request(
                 client, 'get', resource.path, domain=domain, raw_body=True, stream=True).perform()
             response_body = response.body
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            # see tap-twitter-ads.client for more details
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
+            raise_for_error(e)
         return response_body
 
     # List selected fields from stream catalog

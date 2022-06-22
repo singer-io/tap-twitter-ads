@@ -14,7 +14,7 @@ class TestCredCheckInDiscoverMode(unittest.TestCase):
         access_token_secret="test"
     )
 
-    @mock.patch('tap_twitter_ads.sync.Cursor', side_effect=Exception("Unauthorized access"))
+    @mock.patch('tap_twitter_ads.streams.Cursor', side_effect=Exception("Unauthorized access"))
     def test_invalid_get_resource_401(self, mocked_request, mocked_discover):
         """
             Verify exception is raised for no access(401) error code for auth
@@ -27,7 +27,7 @@ class TestCredCheckInDiscoverMode(unittest.TestCase):
         # Verify that discover() is not called due to invalid credentials
         self.assertEqual(mocked_discover.call_count, 0)
     
-    @mock.patch('tap_twitter_ads.get_resource')
+    @mock.patch('tap_twitter_ads.streams.TwitterAds.get_resource')
     @mock.patch('tap_twitter_ads.Client',  side_effect=Exception("invalid"))
     def test_valid_credentials_invalid_account_id(self, mocked_client, mocked_get_resource, mocked_discover):
         """

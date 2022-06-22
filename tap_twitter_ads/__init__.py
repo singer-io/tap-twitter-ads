@@ -8,7 +8,7 @@ import singer
 from singer import metadata, utils
 from tap_twitter_ads.discover import discover
 from tap_twitter_ads.sync import sync as _sync
-from tap_twitter_ads.sync import get_resource
+from tap_twitter_ads.streams import TwitterAds
 
 
 LOGGER = singer.get_logger()
@@ -23,9 +23,9 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 # checking credentials for the discover mode
-def check_credentials(client, account_ids):
+def check_credentials(client, twitter_ads_client, account_ids):
     # check whether tokens are valid or not
-    get_resource('accounts', client, 'accounts')
+    twitter_ads_client.get_resource('accounts', client, 'accounts')
     invalid_account_ids = []
     # check whether account ids are valid or not
     for account_id in account_ids.replace(' ', '').split(','):
@@ -41,7 +41,7 @@ def check_credentials(client, account_ids):
 
 def do_discover(reports, client, account_ids):
     LOGGER.info('Starting discover')
-    check_credentials(client, account_ids) # validating credentials
+    check_credentials(client, TwitterAds(), account_ids) # validating credentials
     catalog = discover(reports)
     json.dump(catalog.to_dict(), sys.stdout, indent=2)
     LOGGER.info('Finished discover')

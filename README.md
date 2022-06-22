@@ -17,7 +17,7 @@ This tap:
   - [account_media](https://developer.twitter.com/en/docs/ads/creatives/api-reference/account-media#account-media)
   - [accounts](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts)
   - [advertiser_business_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/advertiser-business-categories#advertiser-business-categories)
-  - [bidding_rules](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/bidding-rules#bidding-rules)
+  - [tracking_tags](https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags#tracking-tags)
   - [campaigns](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns)
   - **cards**:
     - [image_app_download](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-app-download#image-app-download-cards)
@@ -225,7 +225,7 @@ The process is described in [Obtaining Ads Account Credential](https://developer
       | accounts_daily_report                      | 87      | 1       |
       | accounts_metros_hourly_report              | 226240  | 1       |
       | advertiser_business_categories             | 16      | 1       |
-      | bidding_rules                              | 64      | 1       |
+      | tracking_tags                              | 64      | 1       |
       | campaigns                                  | 2       | 1       |
       | campaigns_conversion_tags_daily_report     | 0       | 1       |
       | campaigns_daily_report                     | 10      | 1       |

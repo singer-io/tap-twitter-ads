@@ -34,10 +34,6 @@ jobs:
             source /usr/local/share/virtualenvs/tap-tester/bin/activate
             stitch-validate-json tap_twitter_ads/schemas/*.json
       - add_ssh_keys
-      - store_test_results:
-          path: test_output/report.xml
-      - store_artifacts:
-          path: htmlcov
       - run:
           name: 'Integration Tests'
           no_output_timeout: 60m

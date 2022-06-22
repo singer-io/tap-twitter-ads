@@ -149,7 +149,7 @@ class TwitterAds:
             request = Request(client, 'get', resource, params=params) #, stream=True)
             cursor = Cursor(None, request)
         except Exception as e:
-            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e.details))
+            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e))
             # see tap-twitter-ads.client for more details
             raise_for_error(e)
         return cursor
@@ -160,7 +160,7 @@ class TwitterAds:
         try:
             response = Request(client, 'post', resource, params=params, body=body).perform()
         except Exception as e:
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
             # see tap-twitter-ads.client for more details
             raise_for_error(e)
         response_body = response.body # Dictionary response of POST request
@@ -176,7 +176,7 @@ class TwitterAds:
             response_body = response.body
         except Exception as e:
             # see tap-twitter-ads.client for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e.details))
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
             raise_for_error(e)
         return response_body
 
@@ -695,13 +695,13 @@ class Reports(TwitterAds):
             stream = catalog.get_stream(report_name)
             schema = stream.schema.to_dict()
             stream_metadata = metadata.to_map(stream.metadata)
-            
+
             # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
             # RISK: What if some reports error or don't finish?
             # Possibly move this code block withing ASYNC Status Check
             total_records = 0
             for async_results_url in async_results_urls:
-                
+
                 # GET DOWNLOAD DATA FROM URL
                 LOGGER.info('Report: {} - GET async data from URL: {}'.format(
                     report_name, async_results_url))
@@ -799,7 +799,7 @@ class Reports(TwitterAds):
 
         elif report_entity == 'ORGANIC_TWEET':
             metric_groups = ['ENGAGEMENT', 'VIDEO']
-        
+
         return metric_groups
 
 
@@ -1046,7 +1046,7 @@ class Reports(TwitterAds):
             j = j + 1 # increment job status check counter
             # End: async_job_status in async_job_statuses
         return async_results_urls
-    
+
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts
 class Accounts(TwitterAds):
     tap_stream_id = "accounts"

@@ -410,8 +410,6 @@ class TwitterAds:
 
                         # Bookmark for child stream
                         child_last_datetime = self.get_bookmark(state, child_stream_name, start_date)
-                        if not child_last_datetime or child_last_datetime is None:
-                            child_last_datetime = start_date
                         child_last_dttm = strptime_to_utc(child_last_datetime)
 
                         child_max_bookmark_value = None
@@ -420,10 +418,6 @@ class TwitterAds:
                         for record in cursor_child:
                             # Get dictionary for record
                             record_dict = self.obj_to_dict(record)
-                            if not record_dict:
-                                # Finish looping
-                                LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
-                                break
 
                             # Get record's bookmark_value
                             # All bookmarked requests are sorted by updated_at descending

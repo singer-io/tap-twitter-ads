@@ -35,17 +35,6 @@ jobs:
             stitch-validate-json tap_twitter_ads/schemas/*.json
       - add_ssh_keys
       - run:
-          name: 'Unit Tests'
-          command: |
-            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
-            pip install nose coverage
-            nosetests --with-coverage --cover-erase --cover-package=tap_twitter_ads --cover-html-dir=htmlcov tests/unittests
-            coverage html
-      - store_test_results:
-          path: test_output/report.xml
-      - store_artifacts:
-          path: htmlcov
-      - run:
           name: 'Integration Tests'
           no_output_timeout: 60m
           command: |

@@ -102,8 +102,8 @@ class BookmarkTest(TwitterAds):
                                         second_sync_records.get(
                                             stream, {}).get('messages', [])
                                         if record.get('action') == 'upsert']
-                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream).get(self.account_id)
-                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream).get(self.account_id)
+                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
+                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
 
 
                 if expected_replication_method == self.INCREMENTAL:

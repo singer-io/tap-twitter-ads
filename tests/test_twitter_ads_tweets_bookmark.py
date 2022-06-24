@@ -127,19 +127,19 @@ class BookmarkTest(TwitterAds):
                 replication_key = next(
                     iter(expected_replication_keys[stream]))
                 first_published_bookmark_value_utc = self.convert_state_to_utc(
-                    first_published_bookmark_value, self.BOOKMARK_FORMAT)
+                    first_published_bookmark_value)
                 second_published_bookmark_value_utc = self.convert_state_to_utc(
-                    second_published_bookmark_value, self.BOOKMARK_FORMAT)
+                    second_published_bookmark_value)
 
                 first_scheduled_bookmark_value_utc = self.convert_state_to_utc(
-                    first_scheduled_bookmark_value, self.BOOKMARK_FORMAT)
+                    first_scheduled_bookmark_value)
                 second_scheduled_bookmark_value_utc = self.convert_state_to_utc(
-                    second_scheduled_bookmark_value, self.BOOKMARK_FORMAT)
+                    second_scheduled_bookmark_value)
                 
-                simulated_published_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['PUBLISHED'], self.BOOKMARK_FORMAT)
+                simulated_published_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['PUBLISHED'])
                 
                 # Records will respect the start_date in case of bookmark for SCHEDULED subtype is not present in state
-                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['SCHEDULED'] if add_schedule_bookmark else self.get_properties()["start_date"], self.BOOKMARK_FORMAT)
+                simulated_scheduled_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id]['SCHEDULED'] if add_schedule_bookmark else self.get_properties()["start_date"])
                 
                 # Verify the first sync sets both bookmarks of the expected form
                 self.assertIsNotNone(first_published_bookmark_value_utc)

@@ -22,8 +22,10 @@ REQUIRED_CONFIG_KEYS = [
     'account_ids'
 ]
 
-# checking credentials for the discover mode
 def check_credentials(client, twitter_ads_client, account_ids):
+    """
+        Checking credentials for the discover mode
+    """
     # check whether tokens are valid or not
     twitter_ads_client.get_resource('accounts', client, 'accounts')
     invalid_account_ids = []

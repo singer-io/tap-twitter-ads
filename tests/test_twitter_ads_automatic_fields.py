@@ -28,12 +28,6 @@ class AutomaticFieldsTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
-        # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
-        streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
-
-        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-        streams_to_test = streams_to_test - {'targeting_events'}
-
         conn_id = connections.ensure_connection(self)
 
         found_catalogs = self.run_and_verify_check_mode(conn_id)

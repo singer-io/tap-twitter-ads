@@ -161,12 +161,10 @@ class BookmarkTest(TwitterAds):
                     # Verify the number of records in the second sync is the same as the first
 
                     # `targeting_criteria` is child streams of parent stream `line_items` and `line_items` is an incremental streams
-                    # Child stream also behave like incremental streams but does not save it's own state. So, it don't
-                    # have same no of record on second sync and first sync.
-                    if stream in ['targeting_criteria']:
-                        continue
-
-                    self.assertEqual(second_sync_count, first_sync_count)
+                    # Child stream also behaves like incremental streams but does not save its state. So, it doesn't
+                    # have the same no of record on second sync and first sync.
+                    if stream not in ['targeting_criteria']:
+                        self.assertEqual(second_sync_count, first_sync_count)
 
                 else:
                     raise NotImplementedError(

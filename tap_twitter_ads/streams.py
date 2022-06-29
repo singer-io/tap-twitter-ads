@@ -207,7 +207,7 @@ class TwitterAds:
                     selected_streams=[]):
         
         # endpoint_config variables
-        path = hasattr(endpoint_config, 'path') and endpoint_config.path
+        path = getattr(endpoint_config, 'path', None)
         id_fields = (hasattr(endpoint_config, 'key_properties') or []) and endpoint_config.key_properties
         parent_id_field = next(iter(id_fields), None) # first ID field
         params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
@@ -295,8 +295,10 @@ class TwitterAds:
             # API Call
             cursor = self.get_resource(stream_name, client, path, new_params)
 
-            # Cursor for children to retrieve parent_ids
-            cursor_child = copy.deepcopy(cursor)
+            # cursor is an object like a generator(yield). First, it will be iterated for the parent stream with 
+            # the parent's bookmark. But, for the child also we want to iterate through all parent records 
+            # based on the child bookmark and collect parent_ids. That's why we are making a cursor copy before the parent iteration.
+            cursor_child = copy.deepcopy(cursor) # Cursor for children to retrieve parent_ids
 
             # time_extracted: datetime when the data was extracted from the API
             time_extracted = utils.now()
@@ -308,6 +310,8 @@ class TwitterAds:
 
             i = 0
             with metrics.record_counter(stream_name) as counter:
+                # Sync only selected stream. When only child stream is selected(parent stream is not selected), 
+                # at that time this condition may become False.
                 if stream_name in selected_streams:
                     # Loop thru cursor records, break out if no more data or bookmark_value < last_dttm
                     for record in cursor:
@@ -426,13 +430,13 @@ class TwitterAds:
                             if bookmark_field:
                                 bookmark_value_str = record_dict.get(bookmark_field)
                                 if bookmark_value_str:
-                                        child_bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
-                                        # If first record, set max_bookmark_value
-                                        if child_counter == 0:
-                                            child_max_bookmark_dttm = child_bookmark_value
-                                            child_max_bookmark_value = child_max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
-                                            LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
-                                                stream_name, child_max_bookmark_value))
+                                    child_bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
+                                    # If first record, set max_bookmark_value
+                                    if child_counter == 0:
+                                        child_max_bookmark_dttm = child_bookmark_value
+                                        child_max_bookmark_value = child_max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                                        LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
+                                            stream_name, child_max_bookmark_value))
                                 else:
                                     # pylint: disable=line-too-long
                                     LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(

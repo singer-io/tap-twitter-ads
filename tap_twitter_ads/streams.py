@@ -207,7 +207,35 @@ class TwitterAds:
         new_dttm = dttm.astimezone(timezone).replace(
             hour=0, minute=0, second=0, microsecond=0)
         return new_dttm
-       
+
+    def return_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
+        """
+        Return replication key value that is available in the record.
+        """
+        max_bookmark_value = None
+        if bookmark_value_str:
+            # Tweets use a different datetime format: '%a %b %d %H:%M:%S %z %Y'
+            if datetime_format:
+                bookmark_value = datetime.strptime(
+                    record_dict.get(bookmark_field), datetime_format)
+            # Other bookmarked endpoints use normal UTC format
+            else:
+                bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
+            # If first record then set it as max_bookmark_value
+            if record_counter == 0:
+                max_bookmark_dttm = bookmark_value
+                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
+                    stream_name, max_bookmark_value))
+        else:
+            # pylint: disable=line-too-long
+            LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
+                stream_name, bookmark_field, record_dict))
+            # pylint: enable=line-too-long
+            bookmark_value = last_dttm
+        
+        return bookmark_value, max_bookmark_value
+
     # from sync.py
     def sync_endpoint(self, 
                     client,
@@ -344,27 +372,15 @@ class TwitterAds:
                         # The first record is the max_bookmark_value
                         if bookmark_field:
                             bookmark_value_str = record_dict.get(bookmark_field)
-                            if bookmark_value_str:
-                                # Tweets use a different datetime format: '%a %b %d %H:%M:%S %z %Y'
-                                if datetime_format:
-                                    bookmark_value = datetime.strptime(
-                                        record_dict.get(bookmark_field), datetime_format)
-                                # Other bookmarked endpoints use normal UTC format
-                                else:
-                                    bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
-                                # If first record, set max_bookmark_value
-                                if i == 0:
-                                    max_bookmark_dttm = bookmark_value
-                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
-                                    LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
-                                        stream_name, max_bookmark_value))
-                            else:
-                                # pylint: disable=line-too-long
-                                LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
-                                    stream_name, bookmark_field, record_dict))
-                                # pylint: enable=line-too-long
-                                bookmark_value = last_dttm
+                            bookmark_value, max_bookmark_value_str = self.return_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
+
+                            if i == 0:
+                                # If first record then set it as max_bookmark_value
+                                max_bookmark_value = max_bookmark_value_str
+
                             if bookmark_value < last_dttm:
+                                # Skip all records from now onwards because the replication key value in record is less than last saved bookmark value.
+                                # Records are in descending order of bookmark value.
                                 # Finish looping
                                 LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
                                     stream_name))
@@ -445,21 +461,15 @@ class TwitterAds:
                             # The first record is the max_bookmark_value
                             if bookmark_field:
                                 bookmark_value_str = record_dict.get(bookmark_field)
-                                if bookmark_value_str:
-                                    child_bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
-                                    # If first record, set max_bookmark_value
-                                    if child_counter == 0:
-                                        child_max_bookmark_dttm = child_bookmark_value
-                                        child_max_bookmark_value = child_max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
-                                        LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
-                                            stream_name, child_max_bookmark_value))
-                                else:
-                                    # pylint: disable=line-too-long
-                                    LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
-                                        child_stream_name, bookmark_field, record_dict))
-                                    # pylint: enable=line-too-long
-                                    child_bookmark_value = child_last_dttm
+                                child_bookmark_value, max_bookmark_value_str = self.return_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, child_stream_name, child_counter, child_last_dttm)
+                                
+                                if child_counter == 0:
+                                    # If first record then set it as max_bookmark_value
+                                    child_max_bookmark_value = max_bookmark_value_str
+
                                 if child_bookmark_value < child_last_dttm:
+                                    # Skip all records from now onwards because the replication key value in record is less than last saved bookmark value.
+                                    # Records are in descending order of bookmark value.
                                     # Finish looping
                                     LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
                                         stream_name))
@@ -526,7 +536,7 @@ class TwitterAds:
             # End: for sub_type in sub_types
 
         # Update the state with the max_bookmark_value for the stream if stream is selected
-        if bookmark_field  and stream_name in selected_streams:
+        if bookmark_field and stream_name in selected_streams:
             self.write_bookmark(state, stream_name, max_bookmark_value)
 
         return total_records

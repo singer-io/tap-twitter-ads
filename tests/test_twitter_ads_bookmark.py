@@ -146,6 +146,31 @@ class BookmarkTest(TwitterAds):
 
                         # Verify that all foreign keys in the 2nd sync are available in in 1st sync also. 
                         self.assertTrue(second_sync_child_foreign_keys.issubset(first_sync_child_foreign_keys))
+
+                        # Collect child key-properties from 1st sync records based on foreign keys of 2nd sync records
+                        first_sync_pks = set()
+                        for record in first_sync_messages:
+                            if record['line_item_id'] in second_sync_child_foreign_keys:
+                                first_sync_pks.add((record['id'], record['line_item_id']))
+
+                        # Collect child key-properties from 2nd sync records
+                        second_sync_pks = set()
+                        for record in second_sync_messages:
+                            second_sync_pks.add((record['id'], record['line_item_id']))
+
+                        # Verify that each child record from 1st sync whose parent record has a replication key value
+                        # greater than or equal to bookmark value are replicated in 2nd sync.
+                        self.assertSetEqual(first_sync_pks, second_sync_pks)
+
+                        parent_sync_messages = [record.get('data') for record in
+                                                first_sync_records.get(
+                                                    "line_items", {}).get('messages', [])
+                                                if record.get('action') == 'upsert']
+
+                        # Verify all parents of the children in 2nd sync follows bookmark
+                        for record in parent_sync_messages:
+                            if record['id'] in second_sync_child_foreign_keys:
+                                self.assertGreaterEqual(record['updated_at'], second_bookmark_value)
                     
                     else:
                         replication_key = next(iter(expected_replication_keys[stream]))

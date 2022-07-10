@@ -60,7 +60,7 @@ class TwitterAds(unittest.TestCase):
                 }
             ]
         }
-        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(" ")[0]
+        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(",")[0]
         if original:
             return return_value
 

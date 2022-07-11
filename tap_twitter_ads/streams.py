@@ -208,9 +208,9 @@ class TwitterAds:
             hour=0, minute=0, second=0, microsecond=0)
         return new_dttm
 
-    def return_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
+    def return_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
         """
-        Return replication key value that is available in the record.
+        Return a maximum replication key value that is available in the record.
         """
         max_bookmark_value = None
         if bookmark_value_str:
@@ -372,7 +372,7 @@ class TwitterAds:
                         # The first record is the max_bookmark_value
                         if bookmark_field:
                             bookmark_value_str = record_dict.get(bookmark_field)
-                            bookmark_value, max_bookmark_value_str = self.return_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
+                            bookmark_value, max_bookmark_value_str = self.return_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
 
                             if i == 0:
                                 # If first record then set it as max_bookmark_value
@@ -461,7 +461,7 @@ class TwitterAds:
                             # The first record is the max_bookmark_value
                             if bookmark_field:
                                 bookmark_value_str = record_dict.get(bookmark_field)
-                                child_bookmark_value, max_bookmark_value_str = self.return_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, child_stream_name, child_counter, child_last_dttm)
+                                child_bookmark_value, max_bookmark_value_str = self.return_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, child_stream_name, child_counter, child_last_dttm)
                                 
                                 if child_counter == 0:
                                     # If first record then set it as max_bookmark_value

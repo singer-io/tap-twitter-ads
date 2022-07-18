@@ -11,7 +11,7 @@ class TestBookmark(unittest.TestCase):
     twitter_ads_object = TwitterAds()
     
     def test_empty_state(self):
-        """ Test that if an empty state passed in get_bookmark then it returns the default value"""
+        """ Test that if an empty state is passed in the get_bookmark then it returns the default value"""
         state = {}
         
         bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
@@ -19,9 +19,9 @@ class TestBookmark(unittest.TestCase):
         self.assertEqual(bookmark, self.default)
 
     def test_empty_bookmark_for_specific_stream(self):
-        """ Test that if the `bookmarks` key is not found in the state then it returns the default value """
+        """ Test that if the bookmark for particular stream is not found in the state then it returns the default value """
 
-        state = {'bookmark_1': {}}
+        state = {'bookmark': {'stream_1': '2017-01-28T00:00:00Z'}}
         
         bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
         

@@ -1,9 +1,7 @@
-import singer
+from tap_tester import LOGGER
 import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
-
-LOGGER = singer.get_logger()
 
 from base import TwitterAds
 

@@ -162,16 +162,33 @@ class BookmarkTest(TwitterAds):
                         # greater than or equal to bookmark value are replicated in 2nd sync.
                         self.assertSetEqual(first_sync_pks, second_sync_pks)
 
-                        parent_sync_messages = [record.get('data') for record in
+                        first_parent_sync_message = [record.get('data') for record in
                                                 first_sync_records.get(
                                                     "line_items", {}).get('messages', [])
                                                 if record.get('action') == 'upsert']
 
                         # Verify all parents of the children in 2nd sync follows bookmark
-                        for record in parent_sync_messages:
+                        for record in first_parent_sync_message:
                             if record['id'] in second_sync_child_foreign_keys:
                                 self.assertGreaterEqual(record['updated_at'], second_bookmark_value)
-                    
+
+                        # Collect pks of parent records with replication key value greater/equal to the bookmark
+                        bookmarked_parent_record_pks = set()
+                        for record in first_parent_sync_message:
+                            if record['updated_at'] >= second_bookmark_value:
+                                bookmarked_parent_record_pks.add(record['id'])
+
+                        # Set of pks for all child records which have parent record's replication key value greater/equal to the bookmark
+                        second_sync_all_child_pks = set()
+                        for id in bookmarked_parent_record_pks:
+                            for record in first_sync_messages:
+                                if id == record['line_item_id']:
+                                    second_sync_all_child_pks.add((record['id'], id))
+
+                        # Verify that child records of second sync and child records that have the parent record's replication key value 
+                        # greater/equal to the bookmark are the same.
+                        self.assertSetEqual(second_sync_all_child_pks, second_sync_pks)
+
                     else:
                         replication_key = next(iter(expected_replication_keys[stream]))
 

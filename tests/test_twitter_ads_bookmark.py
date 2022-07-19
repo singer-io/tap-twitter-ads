@@ -6,7 +6,7 @@ from base import TwitterAds
 
 class BookmarkTest(TwitterAds):
     """Test tap sets a bookmark and respects it for the next sync of a stream"""
-    
+
     def name(self):
         return "tap_tester_twitter_ads_bookmark_test"
 
@@ -34,7 +34,7 @@ class BookmarkTest(TwitterAds):
         streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
                                             'targeting_tv_markets', 'targeting_tv_shows'}
-        
+
         # Invalid bookmark for tweets stream - https://jira.talendforge.org/browse/TDL-18465
         streams_to_test = streams_to_test - {'tweets'}
 
@@ -133,61 +133,45 @@ class BookmarkTest(TwitterAds):
                     # But, we are not using any fields from the child record for it.
                     # In addition to it, we are just using parent's primary key to fetch the child record but
                     # we are not storing parent record any where.
+
                     if stream == "targeting_criteria":
-                        # collect parent pk value for 1st sync
-                        first_sync_child_foreign_keys = set()
-                        for record in first_sync_messages:
-                            first_sync_child_foreign_keys.add(record['line_item_id'])
 
-                        # collect parent pk value for 2nd sync
-                        second_sync_child_foreign_keys = set()
-                        for record in second_sync_messages:
-                            second_sync_child_foreign_keys.add(record['line_item_id'])
+                        # Collect actual values.
+                        # let fks = foreign-key-propertiess and pks = table-key-properties ("primary keys")
+                        first_sync_parent_messages = [record.get('data')
+                                                      for record in first_sync_records.get(
+                                                              "line_items", {}).get('messages', [])
+                                                      if record.get('action') == 'upsert']
+                        first_sync_parent_pks = {record['id'] for record in first_sync_parent_messages}
+                        first_sync_pks_and_fks = {record['id'], record['line_item_id']
+                                                  for record in first_sync_messages}
+                        first_sync_fks = {pk_and_fk[-1] for pk_and_fk in first_sync_pks_and_fks}
+                        second_sync_parent_messages = [record.get('data')
+                                                       for record in second_sync_records.get(
+                                                               "line_items", {}).get('messages', [])
+                                                       if record.get('action') == 'upsert']
+                        second_sync_parent_pks = {record['id'] for record in second_sync_parent_messages}
+                        second_sync_pks_and_fks = {record['id'], record['line_item_id']
+                                                   for record in second_sync_messages}
+                        second_sync_fks = {pk_and_fk[-1] for pk_and_fk in second_sync_pks_and_fks}
 
-                        # Verify that all foreign keys in the 2nd sync are available in in 1st sync also. 
-                        self.assertTrue(second_sync_child_foreign_keys.issubset(first_sync_child_foreign_keys))
+                        # Gather expectations
+                        expected_second_sync_fks = {record['id']
+                                                    for record in first_sync_parent_messages
+                                                    if record['updated_at'] >= second_bookmark_value}
+                        expected_second_sync_pks_and_fks = {pk_and_fk
+                                                            for pk_and_fk in first_sync_pks_and_fks
+                                                            if pk_and_fk[-1] in expected_second_sync_fks}
 
-                        # Collect child key-properties from 1st sync records based on foreign keys of 2nd sync records
-                        first_sync_pks = set()
-                        for record in first_sync_messages:
-                            if record['line_item_id'] in second_sync_child_foreign_keys:
-                                first_sync_pks.add((record['id'], record['line_item_id']))
+                        # Verify every child record in sync 1 corresponds to a synced parent object in sync 1
+                        self.assertTrue(first_sync_fks.issubset(first_sync_parent_pks))
 
-                        # Collect child key-properties from 2nd sync records
-                        second_sync_pks = set()
-                        for record in second_sync_messages:
-                            second_sync_pks.add((record['id'], record['line_item_id']))
+                        # Verify every child record in sync 2 corresponds to a synced parent object in sync 2
+                        self.assertTrue(second_sync_fks.issubset(second_sync_parent_pks))
 
-                        # Verify that each child record from 1st sync whose parent record has a replication key value
-                        # greater than or equal to bookmark value are replicated in 2nd sync.
-                        self.assertSetEqual(first_sync_pks, second_sync_pks)
-
-                        first_parent_sync_message = [record.get('data') for record in
-                                                first_sync_records.get(
-                                                    "line_items", {}).get('messages', [])
-                                                if record.get('action') == 'upsert']
-
-                        # Verify all parents of the children in 2nd sync follows bookmark
-                        for record in first_parent_sync_message:
-                            if record['id'] in second_sync_child_foreign_keys:
-                                self.assertGreaterEqual(record['updated_at'], second_bookmark_value)
-
-                        # Collect pks of parent records with replication key value greater/equal to the bookmark
-                        bookmarked_parent_record_pks = set()
-                        for record in first_parent_sync_message:
-                            if record['updated_at'] >= second_bookmark_value:
-                                bookmarked_parent_record_pks.add(record['id'])
-
-                        # Set of pks for all child records which have parent record's replication key value greater/equal to the bookmark
-                        second_sync_all_child_pks = set()
-                        for id in bookmarked_parent_record_pks:
-                            for record in first_sync_messages:
-                                if id == record['line_item_id']:
-                                    second_sync_all_child_pks.add((record['id'], id))
-
-                        # Verify that child records of second sync and child records that have the parent record's replication key value 
-                        # greater/equal to the bookmark are the same.
-                        self.assertSetEqual(second_sync_all_child_pks, second_sync_pks)
+                        # Verify every child record with a parent record whose replication key value is greater or
+                        # equal to the previous bookmark is replicated in sync 2
+                        self.assertSetEqual(expected_second_sync_pks_and_fks, second_sync_pks_and_fks)
 
                     else:
                         replication_key = next(iter(expected_replication_keys[stream]))

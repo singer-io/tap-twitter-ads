@@ -12,7 +12,7 @@ import pytz
 class TwitterAds(unittest.TestCase):
     start_date = ""
     START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
-    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
@@ -355,7 +355,7 @@ class TwitterAds(unittest.TestCase):
         """
         date_object = dateutil.parser.parse(date_str)
         date_object_utc = date_object.astimezone(tz=pytz.UTC)
-        return dt.strftime(date_object_utc, "%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime(date_object_utc, self.BOOKMARK_FORMAT)
 
     def timedelta_formatted(self, dtime, days=0):
         try:

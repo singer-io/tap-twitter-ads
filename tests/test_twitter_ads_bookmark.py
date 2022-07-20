@@ -109,13 +109,11 @@ class BookmarkTest(TwitterAds):
                 if expected_replication_method == self.INCREMENTAL:
 
                     # collect information specific to incremental streams from syncs 1 & 2
-                    first_bookmark_value_utc = self.convert_state_to_utc(
-                        first_bookmark_value)
-                    second_bookmark_value_utc = self.convert_state_to_utc(
-                        second_bookmark_value)
+                    first_bookmark_value_utc = first_bookmark_value
+                    second_bookmark_value_utc = second_bookmark_value
 
 
-                    simulated_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream])
+                    simulated_bookmark_value = new_states['bookmarks'][stream]
 
                     # Verify the first sync sets a bookmark of the expected form
                     self.assertIsNotNone(first_bookmark_value)
@@ -143,7 +141,7 @@ class BookmarkTest(TwitterAds):
                                                               "line_items", {}).get('messages', [])
                                                       if record.get('action') == 'upsert']
                         first_sync_parent_pks = {record['id'] for record in first_sync_parent_messages}
-                        first_sync_pks_and_fks = {record['id'], record['line_item_id']
+                        first_sync_pks_and_fks = {(record['id'], record['line_item_id'])
                                                   for record in first_sync_messages}
                         first_sync_fks = {pk_and_fk[-1] for pk_and_fk in first_sync_pks_and_fks}
                         second_sync_parent_messages = [record.get('data')
@@ -151,14 +149,14 @@ class BookmarkTest(TwitterAds):
                                                                "line_items", {}).get('messages', [])
                                                        if record.get('action') == 'upsert']
                         second_sync_parent_pks = {record['id'] for record in second_sync_parent_messages}
-                        second_sync_pks_and_fks = {record['id'], record['line_item_id']
+                        second_sync_pks_and_fks = {(record['id'], record['line_item_id'])
                                                    for record in second_sync_messages}
                         second_sync_fks = {pk_and_fk[-1] for pk_and_fk in second_sync_pks_and_fks}
 
                         # Gather expectations
                         expected_second_sync_fks = {record['id']
                                                     for record in first_sync_parent_messages
-                                                    if record['updated_at'] >= second_bookmark_value}
+                                                    if self.convert_state_to_utc(record['updated_at']) >= second_bookmark_value}
                         expected_second_sync_pks_and_fks = {pk_and_fk
                                                             for pk_and_fk in first_sync_pks_and_fks
                                                             if pk_and_fk[-1] in expected_second_sync_fks}

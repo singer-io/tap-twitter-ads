@@ -224,7 +224,7 @@ class TwitterAds:
             # If first record then set it as max_bookmark_value
             if record_counter == 0:
                 max_bookmark_dttm = bookmark_value
-                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%SZ')
                 LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
                     stream_name, max_bookmark_value))
         else:

@@ -11,6 +11,7 @@ from tap_twitter_ads.sync import sync
 
 
 LOGGER = singer.get_logger()
+REQUEST_TIMEOUT = 300 # 5 minutes default timeout
 
 REQUIRED_CONFIG_KEYS = [
     'start_date',
@@ -34,6 +35,12 @@ def main():
     parsed_args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     config = parsed_args.config
+    request_timeout = config.get('request_timeout')
+    # if request_timeout is other than 0, "0" or "" then use request_timeout
+    if request_timeout and float(request_timeout):
+        request_timeout = float(request_timeout)
+    else: # If value is 0, "0" or "" then set the default which is 300 seconds.
+        request_timeout = REQUEST_TIMEOUT
 
     # Twitter Ads SDK Reference: https://github.com/twitterdev/twitter-python-ads-sdk
     # Client reference: https://github.com/twitterdev/twitter-python-ads-sdk#rate-limit-handling-and-request-options
@@ -49,8 +56,7 @@ def main():
             # Error codes: https://developer.twitter.com/en/docs/basics/response-codes
             'retry_on_status': [400, 420, 500, 502, 503, 504],
             'retry_on_timeouts': True,
-            'timeout': (5.0, 10.0)}) # Tuple: (connect, read) timeout in seconds
-
+            'timeout': request_timeout}) # connect and read timeout in seconds
     state = {}
     if parsed_args.state:
         state = parsed_args.state

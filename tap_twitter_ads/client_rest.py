@@ -115,7 +115,7 @@ def raise_for_error(response):
                     error_message = '{}: {}'.format(error_code, message)
                     error_combined = '{}; {}'.format(error_combined, error_message)
                     i = i + 1
-                # Provide warning-only for 'INVALID_ACCOUNT_SERVICE_LEVEL' unavailable enpoints
+                # Provide warning-only for 'INVALID_ACCOUNT_SERVICE_LEVEL' unavailable endpoints
                 if status_code == 400 and 'INVALID_ACCOUNT_SERVICE_LEVEL' in error_combined:
                     LOGGER.warning('{}'.format(error_combined))
                     return error_combined

@@ -1,3 +1,4 @@
+from tap_tester import LOGGER
 import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
@@ -78,7 +79,7 @@ class StartDateTest(TwitterAds):
         # Update START DATE Between Syncs
         ##########################################################################
    
-        print("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
+        LOGGER.info("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
             self.start_date, self.start_date_2))
         self.start_date = self.start_date_2
 

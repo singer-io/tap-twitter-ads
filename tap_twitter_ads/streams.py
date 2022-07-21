@@ -42,19 +42,23 @@ def update_currently_syncing(state, stream_name):
 
 def get_page_size(config, default_page_size):
     """
-    This function will get page size from config,
-    and will return the default value if an invalid page size is given.
+    This function will get page size from config.
+    It will return the default value if an empty string is given, 
+    and will raise an exception if invalid value is given.
     """
     page_size = config.get('page_size', default_page_size)
-    try:
-        if int(float(page_size)) > 0:
-            return int(float(page_size))
-        else:
-            LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
-            return default_page_size
-    except Exception:
-        LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
+    if page_size == "":
         return default_page_size
+    try:
+        if type(page_size) == float:
+            raise Exception
+
+        page_size = int(page_size)
+        if page_size <= 0:
+            raise Exception
+        return page_size
+    except Exception:
+        raise Exception("The entered page size ({}) is invalid".format(page_size))
 
 # parent class for all the stream classes
 class TwitterAds:
@@ -1451,7 +1455,10 @@ class TargetingDevices(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {}
+    params = {
+        'count': 1000,
+        'cursor': None
+    }
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
 class TargetingEvents(TwitterAds):

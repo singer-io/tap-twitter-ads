@@ -40,7 +40,7 @@ class TestParentChildBookmarkingWithNoData(unittest.TestCase):
                     LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], selected_streams=['line_items', 'targeting_criteria'])
 
         # Verify that No bookmark is written for child stream
-        self.assertIsNone(state.get("bookmarks").get(STREAM_NAME))
+        self.assertIsNone(state.get("bookmarks").get(STREAM_NAME).get(ACCOUNT_ID))
 
         # Verify that Request.perform called only once for parent.
         self.assertEqual(mock_request.call_count, 1)
@@ -62,14 +62,14 @@ class TestParentChildBookmarkingWithNoData(unittest.TestCase):
         mock_response.headers = []
 
         mock_request.return_value = mock_response # Mock twitter_ads.http.Request.perform with proper response
-        state = {"bookmarks": {"line_items": "2022-03-08T04:59:57Z"}}
+        state = {"bookmarks": {"line_items": {ACCOUNT_ID: "2022-03-08T04:59:57Z"}}}
 
         # Call sync_endpoint to verify bookmark for child stream
         test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, 'targeting_criteria', 
                     LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], selected_streams=['line_items', 'targeting_criteria'])
 
         # assert that write_bookmark is called with current state and max_bookmark_value
-        mock_write_bookmark.assert_called_with(state, "targeting_criteria", "2022-03-09T04:59:57Z")
+        mock_write_bookmark.assert_called_with(state, "targeting_criteria", "2022-03-09T04:59:57Z", ACCOUNT_ID)
     
         # Verify that Request.perform called 2 times, 1 time for parent and 1 times for child call.
         self.assertEqual(mock_request.call_count, 2)
@@ -92,7 +92,7 @@ class TestParentChildBookmarkingWithNoData(unittest.TestCase):
         mock_response.headers = []
 
         mock_request.return_value = mock_response # Mock twitter_ads.http.Request.perform with proper response
-        state = {"bookmarks": {"line_items": "2022-03-09T04:59:57Z", "targeting_criteria": "2022-03-09T04:59:57Z"}}
+        state = {"bookmarks": {"line_items": {ACCOUNT_ID: "2022-03-09T04:59:57Z"}, "targeting_criteria": {ACCOUNT_ID: "2022-03-09T04:59:57Z"}}}
 
         # Call sync_endpoint to verify bookmark for child stream
         test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, STREAM_NAME, 
@@ -100,7 +100,7 @@ class TestParentChildBookmarkingWithNoData(unittest.TestCase):
                     selected_streams=['line_items', 'targeting_criteria'])
 
         # Get bookmark of child stream after sync
-        bookmark = test_stream.get_bookmark(state, 'targeting_criteria', START_DATE)
+        bookmark = test_stream.get_bookmark(state, 'targeting_criteria', START_DATE, ACCOUNT_ID)
 
         self.assertEqual(bookmark, '2022-03-09T04:59:57Z')
 

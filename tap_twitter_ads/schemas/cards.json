@@ -1,22 +1,26 @@
 {
-  "type": ["null", "object"],
+    "type": ["null", "object"],
     "additionalProperties": false,
     "properties": {
+      "name": {
+        "type": ["null", "string"]
+      },
+      "components": {
+        "type": ["null", "array"],
+        "items": {
+          "type": ["null", "object"],
+          "properties": {}
+        }
+      },
       "id": {
-        "type": ["null", "string"]
-      },
-      "line_item_id": {
-        "type": ["null", "string"]
-      },
-      "tracking_tag_type": {
-        "type": ["null", "string"]
-      },
-      "tracking_tag_url": {
         "type": ["null", "string"]
       },
       "created_at": {
         "type": ["null", "string"],
         "format": "date-time"
+      },
+      "card_uri": {
+        "type": ["null", "string"]
       },
       "updated_at": {
         "type": ["null", "string"],
@@ -24,6 +28,9 @@
       },
       "deleted": {
         "type": ["null", "boolean"]
+      },
+      "card_type": {
+        "type": ["null", "string"]
       }
     }
   }

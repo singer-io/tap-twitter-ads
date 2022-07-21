@@ -12,7 +12,7 @@ import singer
 
 LOGGER = singer.get_logger()
 
-ADS_API_VERSION = '10'
+ADS_API_VERSION = '11'
 ADS_API_URL = 'https://ads-api.twitter.com'
 DEFAULT_CONNECTION_TIMEOUT = 5
 DEFAULT_REST_TIMEOUT = 5
@@ -115,7 +115,7 @@ def raise_for_error(response):
                     error_message = '{}: {}'.format(error_code, message)
                     error_combined = '{}; {}'.format(error_combined, error_message)
                     i = i + 1
-                # Provide warning-only for 'INVALID_ACCOUNT_SERVICE_LEVEL' unavailable enpoints
+                # Provide warning-only for 'INVALID_ACCOUNT_SERVICE_LEVEL' unavailable endpoints
                 if status_code == 400 and 'INVALID_ACCOUNT_SERVICE_LEVEL' in error_combined:
                     LOGGER.warning('{}'.format(error_combined))
                     return error_combined

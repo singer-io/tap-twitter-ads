@@ -1,5 +1,5 @@
 {
-  "type": "object",
+  "type": ["null", "object"],
   "additionalProperties": false,
   "properties": {
     "account_id": {
@@ -7,6 +7,9 @@
     },
     "id": {
       "type": ["null", "integer"]
+    },
+    "tweet_type": {
+      "type": ["null", "string"]
     },
     "id_str": {
       "type": ["null", "string"]

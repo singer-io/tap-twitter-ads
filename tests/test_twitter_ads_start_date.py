@@ -1,3 +1,4 @@
+from tap_tester import LOGGER
 import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
@@ -27,16 +28,16 @@ class StartDateTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
-
-        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-        streams_to_test = streams_to_test - {'targeting_events'}
-
         # running start_date_test for `line_items` and `targeting_criteria` stream
         expected_stream_1 = {"line_items", "targeting_criteria"}
         self.run_start_date(expected_stream_1, new_start_date="2022-06-01T00:00:00Z")
         
+        # running start_date_test for `targeting_events`
+        expected_stream_2 = {'targeting_events'}
+        self.run_start_date(expected_stream_2, new_start_date="2019-06-01T00:00:00Z")
+        
         # running start_date_test for rest of the streams
-        streams_to_test = streams_to_test - expected_stream_1
+        streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2
         self.run_start_date(streams_to_test, new_start_date="2022-04-06T00:00:00Z")
 
     def run_start_date(self, streams_to_test, new_start_date):
@@ -78,7 +79,7 @@ class StartDateTest(TwitterAds):
         # Update START DATE Between Syncs
         ##########################################################################
    
-        print("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
+        LOGGER.info("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
             self.start_date, self.start_date_2))
         self.start_date = self.start_date_2
 
@@ -124,7 +125,12 @@ class StartDateTest(TwitterAds):
                 primary_keys_sync_1 = set(primary_keys_list_1)
                 primary_keys_sync_2 = set(primary_keys_list_2)
 
-                if expected_replication_method == self.INCREMENTAL:
+                # `targeting_criteria` is child stream of line_items stream which is incremental.
+                # We are writing a separate bookmark for the child stream in which we are storing
+                # the bookmark based on the parent's replication key.
+                # But, we are not using any fields from the child record for it.
+                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
+                if expected_replication_method == self.INCREMENTAL and stream != "targeting_criteria":
 
                     # collect information specific to incremental streams from syncs 1 & 2
                     expected_replication_key = next(

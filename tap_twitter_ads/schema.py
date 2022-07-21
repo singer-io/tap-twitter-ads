@@ -111,7 +111,7 @@ def get_schemas(reports):
             valid_replication_keys=(hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys,
             replication_method=(hasattr(stream_metadata, 'replication_method') or None) and stream_metadata.replication_method
         )
-        # make replication keys of automatic inclusion
+        # Make replication keys of automatic inclusion
         mdata = make_replication_key_automatic(mdata, schema, (hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys)
 
         field_metadata[stream_name] = mdata
@@ -201,7 +201,7 @@ def get_schemas(reports):
             replication_method='INCREMENTAL'
         )
 
-        # make replication keys of automatic inclusion
+        # Make replication keys of automatic inclusion
         mdata = make_replication_key_automatic(mdata, schema, ['end_time'])
 
         field_metadata[report_name] = mdata

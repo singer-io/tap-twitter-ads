@@ -11,7 +11,8 @@ import pytz
 
 class TwitterAds(unittest.TestCase):
     start_date = ""
-    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%Z"
+    START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
@@ -60,7 +61,7 @@ class TwitterAds(unittest.TestCase):
                 }
             ]
         }
-        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(",")[0]
+        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(" ")[0]
         if original:
             return return_value
 
@@ -113,15 +114,10 @@ class TwitterAds(unittest.TestCase):
                 self.OBEYS_START_DATE: False
             },
             "campaigns": default_metadata,
-            "cards_website": default_metadata,
-            "cards_video_website": default_metadata,
-            "cards_image_app_download": default_metadata,
-            "cards_video_app_download": default_metadata,
+            "cards": default_metadata,
             "cards_poll": default_metadata,
             "cards_image_conversation": default_metadata,
             "cards_video_conversation": default_metadata,
-            "cards_image_direct_message": default_metadata,
-            "cards_video_direct_message": default_metadata,
             "content_categories": {
                 self.PRIMARY_KEYS: {"id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
@@ -141,7 +137,7 @@ class TwitterAds(unittest.TestCase):
                 # But, we are not using any fields from the child record for it.
                 # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                 self.PRIMARY_KEYS: {"line_item_id", "id"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.REPLICATION_METHOD: self.INCREMENTAL,
                 self.OBEYS_START_DATE: True
             },
             "media_creatives": default_metadata,
@@ -346,7 +342,7 @@ class TwitterAds(unittest.TestCase):
 
         return stream_to_calculated_state
 
-    def convert_state_to_utc(self, date_str, bookmark_format):
+    def convert_state_to_utc(self, date_str):
         """
         Convert a saved bookmark value of the form '2020-08-25T13:17:36-07:00' to
         a string formatted utc datetime,
@@ -354,4 +350,14 @@ class TwitterAds(unittest.TestCase):
         """
         date_object = dateutil.parser.parse(date_str)
         date_object_utc = date_object.astimezone(tz=pytz.UTC)
-        return dt.strftime(date_object_utc, bookmark_format)
+        return dt.strftime(date_object_utc, self.BOOKMARK_FORMAT)
+
+    def timedelta_formatted(self, dtime, days=0):
+        try:
+            date_stripped = dt.strptime(dtime, self.START_DATE_FORMAT)
+            return_date = date_stripped + timedelta(days=days)
+
+            return dt.strftime(return_date, self.START_DATE_FORMAT)
+
+        except ValueError:
+                return Exception("Datetime object is not of the format: {}".format(self.START_DATE_FORMAT))

@@ -154,8 +154,14 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     {
         "currently_syncing": "creatives",
         "bookmarks": {
-            "accounts": "2019-06-11T13:37:55Z",
-            "account_media": "2019-06-19T19:48:42Z",
+            "accounts": {
+                "account_id_1": "2019-06-11T13:37:55Z",
+                "account_id_2": "2019-06-11T18:37:55Z",
+            },
+            "account_media": {
+              "account_id_1": "2019-06-19T19:48:42Z",
+              "account_id_2": "2019-05-19T19:48:42Z"
+            }
             "..."
         }
     }

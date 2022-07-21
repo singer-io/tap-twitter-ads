@@ -102,8 +102,8 @@ class BookmarkTest(TwitterAds):
                                         second_sync_records.get(
                                             stream, {}).get('messages', [])
                                         if record.get('action') == 'upsert']
-                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream)
-                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream)
+                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
+                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
 
 
                 if expected_replication_method == self.INCREMENTAL:
@@ -117,7 +117,7 @@ class BookmarkTest(TwitterAds):
                         second_bookmark_value)
 
 
-                    simulated_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream])
+                    simulated_bookmark_value = self.convert_state_to_utc(new_states['bookmarks'][stream][self.account_id])
 
                     # Verify the first sync sets a bookmark of the expected form
                     self.assertIsNotNone(first_bookmark_value)
@@ -161,12 +161,10 @@ class BookmarkTest(TwitterAds):
                     # Verify the number of records in the second sync is the same as the first
 
                     # `targeting_criteria` is child streams of parent stream `line_items` and `line_items` is an incremental streams
-                    # Child stream also behave like incremental streams but does not save it's own state. So, it don't
-                    # have same no of record on second sync and first sync.
-                    if stream in ['targeting_criteria']:
-                        continue
-
-                    self.assertEqual(second_sync_count, first_sync_count)
+                    # Child stream also behaves like incremental streams but does not save its state. So, it doesn't
+                    # have the same no of record on second sync and first sync.
+                    if stream not in ['targeting_criteria']:
+                        self.assertEqual(second_sync_count, first_sync_count)
 
                 else:
                     raise NotImplementedError(

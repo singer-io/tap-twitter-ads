@@ -489,7 +489,7 @@ class TwitterAds:
                             parent_id_limit = 1
 
                         # Bookmark for child stream
-                        child_last_datetime = self.get_bookmark(state, child_stream_name, start_date)
+                        child_last_datetime = self.get_bookmark(state, child_stream_name, start_date, account_id)
                         child_last_dttm = strptime_to_utc(child_last_datetime)
 
                         child_max_bookmark_value = None
@@ -568,7 +568,7 @@ class TwitterAds:
 
                         # Update the state with the max_bookmark_value for the child stream if parent is incremental
                         if bookmark_field:
-                            self.write_bookmark(state, child_stream_name, child_max_bookmark_value)
+                            self.write_bookmark(state, child_stream_name, child_max_bookmark_value, account_id)
 
                     # End: for child_stream_name in children.items()
                 # End: if children

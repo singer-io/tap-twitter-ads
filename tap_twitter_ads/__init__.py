@@ -7,8 +7,7 @@ from twitter_ads.client import Client
 import singer
 from singer import metadata, utils
 from tap_twitter_ads.discover import discover
-from tap_twitter_ads.sync import sync
-
+from tap_twitter_ads.sync import sync as _sync
 
 LOGGER = singer.get_logger()
 REQUEST_TIMEOUT = 300 # 5 minutes default timeout
@@ -68,7 +67,7 @@ def main():
     if parsed_args.discover:
         do_discover(reports)
     elif parsed_args.catalog:
-        sync(client=client,
+        _sync(client=client,
              config=config,
              catalog=catalog,
              state=state)

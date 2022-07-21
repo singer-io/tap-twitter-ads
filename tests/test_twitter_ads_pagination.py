@@ -2,6 +2,7 @@ import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
 from base import TwitterAds
+import json
 
 class PaginationTest(TwitterAds):
     """
@@ -23,24 +24,22 @@ class PaginationTest(TwitterAds):
         expected_streams = expected_streams - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report',
                                             'promoted_accounts', 'cards_image_direct_message', 'account_media', 'targeting_platforms',
-                                           'targeting_devices', 'funding_instruments', 'promotable_users', 'accounts', 'tailored_audiences',
+                                            'funding_instruments', 'promotable_users', 'accounts', 'tailored_audiences',
                                            'targeting_tv_markets', 'targeting_tv_shows'}
+
+        # Skipping `content_catagories` as It does not follow pagination.
+        expected_streams = expected_streams - {'content_categories'}
 
         # Reduce page_size to 2 due to less data.
         self.run_test(expected_streams=expected_streams - {"targeting_locations", "targeting_conversations"}, page_size=2)    
         
-        # Againg set page_size to 1000 for following streams because these streams containg more than 40000 records.
+        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
         # So, page_size of 2 get lot of time to get all records.
         self.run_test(expected_streams={"targeting_locations", "targeting_conversations"}, page_size=1000)
     
     def run_test(self, expected_streams, page_size):
 
         streams_to_test = expected_streams
-        # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
-        streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
-
-        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-        streams_to_test = streams_to_test - {'targeting_events'}
 
         self.PAGE_SIZE = page_size
 

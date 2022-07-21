@@ -36,13 +36,10 @@ def sync(client, config, catalog, state):
     parent_streams = []
     child_streams = []
     # Get all streams (parent + child) from streams.py
-    # flat_streams = flatten_streams()
     # Loop thru all streams
     
-    # for stream_name, stream_metadata in flat_streams.items():
     for stream_name, stream_obj in STREAMS.items():
         # If stream has a parent_stream, then it is a child stream
-        # parent_stream = stream_obj.get('parent_stream')
         parent_stream = hasattr(stream_obj, 'parent_stream') and stream_obj.parent_stream
         # Append selected parent streams
         if not parent_stream and stream_name in selected_streams:
@@ -140,7 +137,7 @@ def sync(client, config, catalog, state):
 
                 LOGGER.info('Report: {} - START Syncing for Account ID: {}'.format(
                     report_name, account_id))
-                
+
                 # Write schema and log selected fields for stream
                 reports_obj.write_schema(catalog, report_name)
 

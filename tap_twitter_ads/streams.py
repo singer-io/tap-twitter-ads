@@ -1262,10 +1262,7 @@ class ContentCategories(TwitterAds):
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments
 class FundingInstruments(TwitterAds):
@@ -1289,7 +1286,10 @@ class IabCategories(TwitterAds):
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'FULL_TABLE'
-    params = {}
+    params = {
+        'count': 1000,
+        'cursor': None
+    }
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-criteria#targeting-criteria
 class TargetingCriteria(TwitterAds):

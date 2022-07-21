@@ -7,10 +7,12 @@ from twitter_ads.client import Client
 import singer
 from singer import metadata, utils
 from tap_twitter_ads.discover import discover
-from tap_twitter_ads.sync import sync
+from tap_twitter_ads.sync import sync as _sync
+from tap_twitter_ads.streams import TwitterAds
 
 
 LOGGER = singer.get_logger()
+REQUEST_TIMEOUT = 300 # 5 minutes default timeout
 
 REQUIRED_CONFIG_KEYS = [
     'start_date',
@@ -21,8 +23,28 @@ REQUIRED_CONFIG_KEYS = [
     'account_ids'
 ]
 
-def do_discover(reports):
+def check_credentials(client, twitter_ads_client, account_ids):
+    """
+        Checking credentials for the discover mode
+    """
+    # check whether tokens are valid or not
+    twitter_ads_client.get_resource('accounts', client, 'accounts')
+    invalid_account_ids = []
+    # check whether account ids are valid or not
+    for account_id in account_ids.replace(' ', '').split(','):
+        try:
+            client.accounts(account_id)
+        except Exception as e:
+            invalid_account_ids.append(account_id)
+
+    if invalid_account_ids:
+        error_message = 'Invalid Twitter Ads accounts provided during the configuration:{}'.format(invalid_account_ids)
+        raise Exception(error_message) from None
+
+
+def do_discover(reports, client, account_ids):
     LOGGER.info('Starting discover')
+    check_credentials(client, TwitterAds(), account_ids) # validating credentials
     catalog = discover(reports)
     json.dump(catalog.to_dict(), sys.stdout, indent=2)
     LOGGER.info('Finished discover')
@@ -34,6 +56,12 @@ def main():
     parsed_args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     config = parsed_args.config
+    request_timeout = config.get('request_timeout')
+    # if request_timeout is other than 0, "0" or "" then use request_timeout
+    if request_timeout and float(request_timeout):
+        request_timeout = float(request_timeout)
+    else: # If value is 0, "0" or "" then set the default which is 300 seconds.
+        request_timeout = REQUEST_TIMEOUT
 
     # Twitter Ads SDK Reference: https://github.com/twitterdev/twitter-python-ads-sdk
     # Client reference: https://github.com/twitterdev/twitter-python-ads-sdk#rate-limit-handling-and-request-options
@@ -49,8 +77,7 @@ def main():
             # Error codes: https://developer.twitter.com/en/docs/basics/response-codes
             'retry_on_status': [400, 420, 500, 502, 503, 504],
             'retry_on_timeouts': True,
-            'timeout': (5.0, 10.0)}) # Tuple: (connect, read) timeout in seconds
-
+            'timeout': request_timeout}) # connect and read timeout in seconds
     state = {}
     if parsed_args.state:
         state = parsed_args.state
@@ -60,9 +87,9 @@ def main():
     reports = config.get('reports', {})
 
     if parsed_args.discover:
-        do_discover(reports)
+        do_discover(reports, client, config.get("account_ids"))
     elif parsed_args.catalog:
-        sync(client=client,
+        _sync(client=client,
              config=config,
              catalog=catalog,
              state=state)

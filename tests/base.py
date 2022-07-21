@@ -12,7 +12,7 @@ import pytz
 class TwitterAds(unittest.TestCase):
     start_date = ""
     START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
-    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%S%z"
+    BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
     PRIMARY_KEYS = "table-key-properties"
     REPLICATION_METHOD = "forced-replication-method"
     REPLICATION_KEYS = "valid-replication-keys"
@@ -137,7 +137,7 @@ class TwitterAds(unittest.TestCase):
                 # But, we are not using any fields from the child record for it.
                 # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                 self.PRIMARY_KEYS: {"line_item_id", "id"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.REPLICATION_METHOD: self.INCREMENTAL,
                 self.OBEYS_START_DATE: True
             },
             "media_creatives": default_metadata,
@@ -350,7 +350,7 @@ class TwitterAds(unittest.TestCase):
         """
         date_object = dateutil.parser.parse(date_str)
         date_object_utc = date_object.astimezone(tz=pytz.UTC)
-        return dt.strftime(date_object_utc, "%Y-%m-%dT%H:%M:%SZ")
+        return dt.strftime(date_object_utc, self.BOOKMARK_FORMAT)
 
     def timedelta_formatted(self, dtime, days=0):
         try:

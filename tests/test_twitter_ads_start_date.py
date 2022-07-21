@@ -125,7 +125,12 @@ class StartDateTest(TwitterAds):
                 primary_keys_sync_1 = set(primary_keys_list_1)
                 primary_keys_sync_2 = set(primary_keys_list_2)
 
-                if expected_replication_method == self.INCREMENTAL:
+                # `targeting_criteria` is child stream of line_items stream which is incremental.
+                # We are writing a separate bookmark for the child stream in which we are storing
+                # the bookmark based on the parent's replication key.
+                # But, we are not using any fields from the child record for it.
+                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
+                if expected_replication_method == self.INCREMENTAL and stream != "targeting_criteria":
 
                     # collect information specific to incremental streams from syncs 1 & 2
                     expected_replication_key = next(

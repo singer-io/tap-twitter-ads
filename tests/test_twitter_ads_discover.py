@@ -27,7 +27,6 @@ class DiscoverTest(TwitterAds):
         • verify the actual replication matches our expected replication method
         • verify that primary, replication keys are given the inclusion of automatic.
         • verify that all other fields have inclusion of available metadata.
-
         """
         streams_to_test = self.expected_streams()
 
@@ -109,7 +108,12 @@ class DiscoverTest(TwitterAds):
                                         actual_replication_method, expected_replication_method))
 
                 # verify that if there is a replication key we are doing INCREMENTAL otherwise FULL
-                if expected_replication_keys:
+                if stream == "targeting_criteria" or expected_replication_keys:
+                    # `targeting_criteria` is child stream of line_items stream which is incremental.
+                    # We are writing a separate bookmark for the child stream in which we are storing 
+                    # the bookmark based on the parent's replication key.
+                    # But, we are not using any fields from the child record for it.
+                    # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                     self.assertEqual(self.INCREMENTAL, actual_replication_method)
                 else:
                     self.assertEqual(self.FULL_TABLE, actual_replication_method)

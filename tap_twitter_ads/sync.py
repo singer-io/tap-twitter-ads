@@ -89,7 +89,8 @@ def sync(client, config, catalog, state):
                                           endpoint_config=endpoint_config,
                                           tap_config=config,
                                           account_id=account_id,
-                                          child_streams=child_streams)
+                                          child_streams=child_streams,
+                                          selected_streams= selected_streams)
 
             LOGGER.info('Stream: {} - FINISHED Syncing, Account ID: {}, Total Records: {}'.format(
                 stream_name, account_id, total_records))

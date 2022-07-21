@@ -25,6 +25,7 @@ from twitter_ads.utils import split_list
 from singer.utils import strptime_to_utc
 from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
+import copy
 from tap_twitter_ads.client import raise_for_error
 
 LOGGER = singer.get_logger()
@@ -225,7 +226,35 @@ class TwitterAds:
         new_dttm = dttm.astimezone(timezone).replace(
             hour=0, minute=0, second=0, microsecond=0)
         return new_dttm
-       
+
+    def get_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
+        """
+        Return a maximum replication key value that is available in the record.
+        """
+        max_bookmark_value = None
+        if bookmark_value_str:
+            # Tweets use a different datetime format: '%a %b %d %H:%M:%S %z %Y'
+            if datetime_format:
+                bookmark_value = datetime.strptime(
+                    record_dict.get(bookmark_field), datetime_format)
+            # Other bookmarked endpoints use normal UTC format
+            else:
+                bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
+            # If first record then set it as max_bookmark_value
+            if record_counter == 0:
+                max_bookmark_dttm = bookmark_value
+                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%SZ')
+                LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
+                    stream_name, max_bookmark_value))
+        else:
+            # pylint: disable=line-too-long
+            LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
+                stream_name, bookmark_field, record_dict))
+            # pylint: enable=line-too-long
+            bookmark_value = last_dttm
+        
+        return bookmark_value, max_bookmark_value
+
     # from sync.py
     def sync_endpoint(self, 
                     client,
@@ -237,10 +266,11 @@ class TwitterAds:
                     tap_config,
                     account_id=None,
                     parent_ids=None,
-                    child_streams=None):
+                    child_streams=None,
+                    selected_streams=[]):
         
         # endpoint_config variables
-        path = hasattr(endpoint_config, 'path') and endpoint_config.path
+        path = getattr(endpoint_config, 'path', None)
         id_fields = (hasattr(endpoint_config, 'key_properties') or []) and endpoint_config.key_properties
         parent_id_field = next(iter(id_fields), None) # first ID field
         params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
@@ -305,6 +335,7 @@ class TwitterAds:
                 add_account_id = True
                 path = path.replace('{account_id}', account_id)
 
+            parent_id_list=""
             if parent_ids:
                 parent_id_list = ','.join(map(str, parent_ids))
                 path = path.replace('{parent_ids}', parent_id_list)
@@ -333,6 +364,11 @@ class TwitterAds:
             # API Call
             cursor = self.get_resource(stream_name, client, path, new_params)
 
+            # cursor is an object like a generator(yield). First, it will be iterated for the parent stream with 
+            # the parent's bookmark. But, for the child also we want to iterate through all parent records 
+            # based on the child bookmark and collect parent_ids. That's why we are making a cursor copy before the parent iteration.
+            cursor_child = copy.deepcopy(cursor) # Cursor for children to retrieve parent_ids
+
             # time_extracted: datetime when the data was extracted from the API
             time_extracted = utils.now()
 
@@ -343,104 +379,89 @@ class TwitterAds:
 
             i = 0
             with metrics.record_counter(stream_name) as counter:
-                # Loop thru cursor records, break out if no more data or bookmark_value < last_dttm
-                for record in cursor:
-                    # Get dictionary for record
-                    record_dict = self.obj_to_dict(record)
-                    if not record_dict:
-                        # Finish looping
-                        LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
-                        break
+                # Sync only selected stream. When only child stream is selected(parent stream is not selected), 
+                # at that time this condition may become False.
+                if stream_name in selected_streams:
+                    # Loop thru cursor records, break out if no more data or bookmark_value < last_dttm
+                    for record in cursor:
+                        # Get dictionary for record
+                        record_dict = self.obj_to_dict(record)
+                        if not record_dict:
+                            # Finish looping
+                            LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
+                            break
 
-                    # Get record's bookmark_value
-                    # All bookmarked requests are sorted by updated_at descending
-                    #   'sort_by': ['updated_at-desc']
-                    # The first record is the max_bookmark_value
-                    if bookmark_field:
-                        bookmark_value_str = record_dict.get(bookmark_field)
-                        if bookmark_value_str:
-                            # Tweets use a different datetime format: '%a %b %d %H:%M:%S %z %Y'
-                            if datetime_format:
-                                bookmark_value = datetime.strptime(
-                                    record_dict.get(bookmark_field), datetime_format)
-                            # Other bookmarked endpoints use normal UTC format
-                            else:
-                                bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
-                            # If first record, set max_bookmark_value
+                        # Get record's bookmark_value
+                        # All bookmarked requests are sorted by updated_at descending
+                        #   'sort_by': ['updated_at-desc']
+                        # The first record is the max_bookmark_value
+                        if bookmark_field:
+                            bookmark_value_str = record_dict.get(bookmark_field)
+                            bookmark_value, max_bookmark_value_str = self.get_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
+
                             if i == 0 and sub_type != "SCHEDULED": # SCHEDULED type tweets response do not contain records in sorted order.
-                                max_bookmark_dttm = bookmark_value
-                                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
-                                LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(
-                                    stream_name, max_bookmark_value))
+                                # If first record then set it as max_bookmark_value
+                                max_bookmark_value = max_bookmark_value_str
+
+                            # Bookmark mechanism for SCHEDULED type tweets
+                            if sub_type == "SCHEDULED":
+                                if not max_bookmark_dttm:
+                                    # Assign maximum bookmark value to last saved state
+                                    max_bookmark_dttm = last_dttm
+                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                                if bookmark_value >= max_bookmark_dttm:
+                                    # If replication key value of current record greater than maximum bookmark then update it.
+                                    max_bookmark_dttm = bookmark_value
+                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                                if bookmark_value < last_dttm:
+                                    # Skip record if replication value less than last saved state
+                                    continue
+
+                            elif bookmark_value < last_dttm:
+                                # Finish looping
+                                LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
+                                break
+
                         else:
-                            # pylint: disable=line-too-long
-                            LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
-                                stream_name, bookmark_field, record_dict))
-                            # pylint: enable=line-too-long
                             bookmark_value = last_dttm
 
-                        # Bookmark mechanism for SCHEDULED type tweets
-                        if sub_type == "SCHEDULED":
-                            if not max_bookmark_dttm:
-                                # Assign maximum bookmark value to last saved state
-                                max_bookmark_dttm = last_dttm
-                                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                        # Check for PK fields
+                        for key in id_fields:
+                            if not record_dict.get(key):
+                                LOGGER.info('Stream: {} - Missing key {} in record: {}'.format(
+                                    stream_name, key, record))
 
-                            if bookmark_value >= max_bookmark_dttm:
-                                # If replication key value of current record greater than maximum bookmark then update it.
-                                max_bookmark_dttm = bookmark_value
-                                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+                            # Transform record from transform.py
+                            prepared_record = transform_record(stream_name, record_dict)
 
-                            if bookmark_value < last_dttm:
-                                # Skip record if replication value less than last saved state
-                                continue
+                            # Add account_id to record
+                            if add_account_id:
+                                prepared_record['account_id'] = account_id
 
-                        elif bookmark_value < last_dttm:
-                            # Finish looping
-                            LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
-                                stream_name))
-                            break
-                    else:
-                        bookmark_value = last_dttm
+                        # Transform record with Singer Transformer
+                        with Transformer() as transformer:
+                            transformed_record = transformer.transform(
+                                prepared_record,
+                                schema,
+                                stream_metadata)
 
-                    # Check for PK fields
-                    for key in id_fields:
-                        if not record_dict.get(key):
-                            LOGGER.info('Stream: {} - Missing key {} in record: {}'.format(
-                                stream_name, key, record))
+                            self.write_record(stream_name, transformed_record, time_extracted=time_extracted)
+                            counter.increment()
 
-                    # Transform record from transform.py
-                    prepared_record = transform_record(stream_name, record_dict)
 
-                    # Add account_id to record
-                    if add_account_id:
-                        prepared_record['account_id'] = account_id
+                            # Increment counters
+                            i = i + 1
+                            total_records = total_records + 1
 
-                    # Transform record with Singer Transformer
-                    with Transformer() as transformer:
-                        transformed_record = transformer.transform(
-                            prepared_record,
-                            schema,
-                            stream_metadata)
+                            # End: for record in cursor
+                        # End: with metrics as counter
 
-                        self.write_record(stream_name, transformed_record, time_extracted=time_extracted)
-                        counter.increment()
-
-                    # Append parent_id to parent_ids
-                    parent_id = record_dict.get(parent_id_field)
-                    parent_ids.append(parent_id)
-
-                    # Increment counters
-                    i = i + 1
-                    total_records = total_records + 1
-
-                    # End: for record in cursor
-                # End: with metrics as counter
-
-            # Update the state with the max_bookmark_value for the tweets stream
-            if stream_name == "tweets":
-                self.write_bookmark(state, stream_name, max_bookmark_value, account_id, sub_type)
-                max_bookmark_dttm = None
+                    # Update the state with the max_bookmark_value for the tweets stream
+                    if stream_name == "tweets":
+                        self.write_bookmark(state, stream_name, max_bookmark_value, account_id, sub_type)
+                        max_bookmark_dttm = None
 
             # Loop through children and chunks of parent_ids
             if children:
@@ -466,6 +487,47 @@ class TwitterAds:
                             parent_id_limit = child_endpoint_config.parent_ids_limit
                         else:
                             parent_id_limit = 1
+
+                        # Bookmark for child stream
+                        child_last_datetime = self.get_bookmark(state, child_stream_name, start_date, account_id)
+                        child_last_dttm = strptime_to_utc(child_last_datetime)
+
+                        child_max_bookmark_value = None
+                        child_counter = 0
+                        # Loop thru cursor records, break out if no more data or child_bookmark_value < child_last_dttm
+                        for record in cursor_child:
+                            # Get dictionary for record
+                            record_dict = self.obj_to_dict(record)
+
+                            # Get record's bookmark_value
+                            # All bookmarked requests are sorted by updated_at descending
+                            #   'sort_by': ['updated_at-desc']
+                            # The first record is the max_bookmark_value
+                            if bookmark_field:
+                                bookmark_value_str = record_dict.get(bookmark_field)
+                                child_bookmark_value, max_bookmark_value_str = self.get_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, child_stream_name, child_counter, child_last_dttm)
+                                
+                                if child_counter == 0:
+                                    # If first record then set it as max_bookmark_value
+                                    child_max_bookmark_value = max_bookmark_value_str
+
+                                if child_bookmark_value < child_last_dttm:
+                                    # Skip all records from now onwards because the replication key value in record is less than last saved bookmark value.
+                                    # Records are in descending order of bookmark value.
+                                    # Finish looping
+                                    LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
+                                        stream_name))
+                                    break
+                            else:
+                                child_bookmark_value = child_last_dttm
+
+                            # Append parent_id to parent_ids
+                            parent_id = record_dict.get(parent_id_field)
+                            parent_ids.append(parent_id)
+
+                            child_counter = child_counter + 1
+                        # End: for record in cursor
+
                         chunk = 0 # chunk number
                         # Make chunks of parent_ids
                         for chunk_ids in split_list(parent_ids, parent_id_limit):
@@ -484,7 +546,8 @@ class TwitterAds:
                                 tap_config=tap_config,
                                 account_id=account_id,
                                 parent_ids=chunk_ids,
-                                child_streams=child_streams)
+                                child_streams=child_streams,
+                                selected_streams=selected_streams)
 
                             # pylint: disable=line-too-long
                             LOGGER.info('Child Stream: {} - Finished chunk#: {}, parent_stream: {}'.format(
@@ -502,6 +565,11 @@ class TwitterAds:
                             child_stream_name, total_child_records))
                         update_currently_syncing(state, stream_name)
                         # End: if child_stream_name in child_streams
+
+                        # Update the state with the max_bookmark_value for the child stream if parent is incremental
+                        if bookmark_field:
+                            self.write_bookmark(state, child_stream_name, child_max_bookmark_value, account_id)
+
                     # End: for child_stream_name in children.items()
                 # End: if children
 
@@ -511,8 +579,8 @@ class TwitterAds:
             # pylint: enable=line-too-long
             # End: for sub_type in sub_types
 
-        # Update the state with the max_bookmark_value for all other streams except tweets stream
-        if bookmark_field  and stream_name != "tweets":
+        # Update the state with the max_bookmark_value for all other streams except tweets stream if stream is selected
+        if bookmark_field  and stream_name in selected_streams and stream_name != "tweets":
             self.write_bookmark(state, stream_name, max_bookmark_value, account_id)
 
         return total_records
@@ -1266,7 +1334,7 @@ class TargetingCriteria(TwitterAds):
     path = 'accounts/{account_id}/targeting_criteria'
     data_key = 'data'
     key_properties = ['line_item_id', 'id']
-    replication_method = 'FULL_TABLE'
+    replication_method = 'INCREMENTAL'
     parent_ids_limit = 200
     params = {
         'line_item_ids': '{parent_ids}', # up to 200 comma delim ids

@@ -20,15 +20,11 @@ This tap:
   - [tracking_tags](https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags#tracking-tags)
   - [campaigns](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns)
   - **cards**:
-    - [image_app_download](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-app-download#image-app-download-cards)
+    - [cards](https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards)
     - [image_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-conversation#image-conversation-cards)
-    - [image_direct_message](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-direct-message#image-direct-message-cards)
     - [poll](https://developer.twitter.com/en/docs/ads/creatives/api-reference/poll#poll-cards)
-    - [video_app_download](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-app-download#video-app-download-cards)
     - [video_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-conversation#video-conversation-cards)
-    - [video_direct_message](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-direct-message#video-direct-message-cards)
-    - [video_website](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-website#video-website-cards)
-    - [website](https://developer.twitter.com/en/docs/ads/creatives/api-reference/website#website-cards)
+    
   - [content_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories)
   - [funding_instruments](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments)
   - [iab_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/iab-categories#iab-categories)

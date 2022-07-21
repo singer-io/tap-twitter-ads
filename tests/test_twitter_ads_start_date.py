@@ -1,3 +1,4 @@
+from tap_tester import LOGGER
 import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
@@ -27,16 +28,16 @@ class StartDateTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
-
-        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
-        streams_to_test = streams_to_test - {'targeting_events'}
-
         # running start_date_test for `line_items` and `targeting_criteria` stream
         expected_stream_1 = {"line_items", "targeting_criteria"}
         self.run_start_date(expected_stream_1, new_start_date="2022-06-01T00:00:00Z")
         
+        # running start_date_test for `targeting_events`
+        expected_stream_2 = {'targeting_events'}
+        self.run_start_date(expected_stream_2, new_start_date="2019-06-01T00:00:00Z")
+        
         # running start_date_test for rest of the streams
-        streams_to_test = streams_to_test - expected_stream_1
+        streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2
         self.run_start_date(streams_to_test, new_start_date="2022-04-06T00:00:00Z")
 
     def run_start_date(self, streams_to_test, new_start_date):
@@ -78,7 +79,7 @@ class StartDateTest(TwitterAds):
         # Update START DATE Between Syncs
         ##########################################################################
    
-        print("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
+        LOGGER.info("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
             self.start_date, self.start_date_2))
         self.start_date = self.start_date_2
 

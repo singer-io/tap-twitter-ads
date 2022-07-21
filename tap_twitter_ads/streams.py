@@ -25,6 +25,7 @@ from twitter_ads.utils import split_list
 from singer.utils import strptime_to_utc
 from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
+from tap_twitter_ads.client import raise_for_error
 
 LOGGER = singer.get_logger()
 
@@ -39,6 +40,26 @@ def update_currently_syncing(state, stream_name):
         singer.set_currently_syncing(state, stream_name)
     singer.write_state(state)
     LOGGER.info('Stream: {} - Currently Syncing'.format(stream_name))
+
+def get_page_size(config, default_page_size):
+    """
+    This function will get page size from config.
+    It will return the default value if an empty string is given, 
+    and will raise an exception if invalid value is given.
+    """
+    page_size = config.get('page_size', default_page_size)
+    if page_size == "":
+        return default_page_size
+    try:
+        if type(page_size) == float:
+            raise Exception
+
+        page_size = int(page_size)
+        if page_size <= 0:
+            raise Exception
+        return page_size
+    except Exception:
+        raise Exception("The entered page size ({}) is invalid".format(page_size))
 
 # parent class for all the stream classes
 class TwitterAds:
@@ -130,11 +151,11 @@ class TwitterAds:
         
         try:
             request = Request(client, 'get', resource, params=params) #, stream=True)
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, err.details))
-            raise err
-        cursor = Cursor(None, request)
+            cursor = Cursor(None, request)
+        except Exception as e:
+            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         return cursor
 
     # method for HTTP post api call
@@ -142,10 +163,10 @@ class TwitterAds:
         resource = '/{}/{}'.format(API_VERSION, path)
         try:
             response = Request(client, 'post', resource, params=params, body=body).perform()
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         response_body = response.body # Dictionary response of POST request
         return response_body
 
@@ -157,10 +178,10 @@ class TwitterAds:
             response = Request(
                 client, 'get', resource.path, domain=domain, raw_body=True, stream=True).perform()
             response_body = response.body
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            # see tap-twitter-ads.client for more details
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
+            raise_for_error(e)
         return response_body
 
     # List selected fields from stream catalog
@@ -212,7 +233,7 @@ class TwitterAds:
 
         # If page_size found in config then used it else use default page size.
         if params.get('count') and tap_config.get('page_size'):
-            params['count'] = tap_config['page_size']
+            params['count'] = get_page_size(tap_config, params.get('count'))
 
         bookmark_field = next(iter((hasattr(endpoint_config, 'replication_keys') or []) and endpoint_config.replication_keys), None)
         datetime_format = hasattr(endpoint_config,'datetime_format') and endpoint_config.datetime_format
@@ -678,13 +699,13 @@ class Reports(TwitterAds):
             stream = catalog.get_stream(report_name)
             schema = stream.schema.to_dict()
             stream_metadata = metadata.to_map(stream.metadata)
-            
+
             # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
             # RISK: What if some reports error or don't finish?
             # Possibly move this code block withing ASYNC Status Check
             total_records = 0
             for async_results_url in async_results_urls:
-                
+
                 # GET DOWNLOAD DATA FROM URL
                 LOGGER.info('Report: {} - GET async data from URL: {}'.format(
                     report_name, async_results_url))
@@ -782,7 +803,7 @@ class Reports(TwitterAds):
 
         elif report_entity == 'ORGANIC_TWEET':
             metric_groups = ['ENGAGEMENT', 'VIDEO']
-        
+
         return metric_groups
 
 
@@ -1029,7 +1050,7 @@ class Reports(TwitterAds):
             j = j + 1 # increment job status check counter
             # End: async_job_status in async_job_statuses
         return async_results_urls
-    
+
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts
 class Accounts(TwitterAds):
     tap_stream_id = "accounts"
@@ -1435,7 +1456,10 @@ class TargetingDevices(TwitterAds):
     data_key = 'data'
     key_properties = ['targeting_value']
     replication_method = 'FULL_TABLE'
-    params = {}
+    params = {
+        'count': 1000,
+        'cursor': None
+    }
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
 class TargetingEvents(TwitterAds):

@@ -13,6 +13,17 @@ jobs:
             pip install -U 'pip<19.2' 'setuptools<51.0.0'
             pip install .[dev]
       - run:
+          name: 'Unit Tests'
+          command: |
+            source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate
+            pip install coverage
+            nosetests --with-coverage --cover-erase --cover-package=tap_twitter_ads --cover-html-dir=htmlcov tests/unittests
+            coverage html
+      - store_test_results:
+          path: test_output/report.xml
+      - store_artifacts:
+          path: htmlcov
+      - run:
           name: 'pylint'
           command: |
             source /usr/local/share/virtualenvs/tap-twitter-ads/bin/activate

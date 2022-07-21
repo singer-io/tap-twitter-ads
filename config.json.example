@@ -22,5 +22,6 @@
       "segment": "REGIONS",
       "granularity": "DAY"
     }
-  ]
+  ],
+  "request_timeout": 300
 }

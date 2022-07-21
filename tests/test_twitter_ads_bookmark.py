@@ -6,7 +6,6 @@ from base import TwitterAds
 
 class BookmarkTest(TwitterAds):
     """Test tap sets a bookmark and respects it for the next sync of a stream"""
-
     def name(self):
         return "tap_tester_twitter_ads_bookmark_test"
 
@@ -102,8 +101,8 @@ class BookmarkTest(TwitterAds):
                                         second_sync_records.get(
                                             stream, {}).get('messages', [])
                                         if record.get('action') == 'upsert']
-                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream)
-                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream)
+                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
+                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
 
 
                 if expected_replication_method == self.INCREMENTAL:
@@ -112,8 +111,7 @@ class BookmarkTest(TwitterAds):
                     first_bookmark_value_utc = first_bookmark_value
                     second_bookmark_value_utc = second_bookmark_value
 
-
-                    simulated_bookmark_value = new_states['bookmarks'][stream]
+                    simulated_bookmark_value = new_states['bookmarks'][stream][self.account_id]
 
                     # Verify the first sync sets a bookmark of the expected form
                     self.assertIsNotNone(first_bookmark_value)

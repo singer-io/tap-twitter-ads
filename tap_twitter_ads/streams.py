@@ -26,6 +26,7 @@ from singer.utils import strptime_to_utc
 from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
 import copy
+from tap_twitter_ads.client import raise_for_error
 
 LOGGER = singer.get_logger()
 
@@ -43,19 +44,23 @@ def update_currently_syncing(state, stream_name):
 
 def get_page_size(config, default_page_size):
     """
-    This function will get page size from config,
-    and will return the default value if an invalid page size is given.
+    This function will get page size from config.
+    It will return the default value if an empty string is given, 
+    and will raise an exception if invalid value is given.
     """
     page_size = config.get('page_size', default_page_size)
-    try:
-        if int(float(page_size)) > 0:
-            return int(float(page_size))
-        else:
-            LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
-            return default_page_size
-    except Exception:
-        LOGGER.warning(f"The entered page size is invalid; it will be set to the default page size of {default_page_size}")
+    if page_size == "":
         return default_page_size
+    try:
+        if type(page_size) == float:
+            raise Exception
+
+        page_size = int(page_size)
+        if page_size <= 0:
+            raise Exception
+        return page_size
+    except Exception:
+        raise Exception("The entered page size ({}) is invalid".format(page_size))
 
 # parent class for all the stream classes
 class TwitterAds:
@@ -104,23 +109,37 @@ class TwitterAds:
             raise err
         
     # get bookmark for the stream
-    def get_bookmark(self, state, stream, default):
+    def get_bookmark(self, state, stream, default, account_id):
         # default only populated on initial sync
         if (state is None) or ('bookmarks' not in state):
             return default
         return (
             state
             .get('bookmarks', {})
-            .get(stream, default)
+            .get(stream, {})
+            .get(account_id, default) # Return account wise bookmark value
         )
         
     # to read bookmarks in sync mode     
-    def write_bookmark(self, state, stream, value):
+    def write_bookmark(self, state, stream, value, account_id, sub_type=None):
         if 'bookmarks' not in state:
             state['bookmarks'] = {}
-        state['bookmarks'][stream] = value
-        LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
-        singer.write_state(state)   
+
+        state['bookmarks'][stream] = state['bookmarks'].get(stream, {}) # Retrieve existing bookmark value
+
+        if sub_type:
+            # Store bookmark value for each sub_type of tweets stream
+            # Retrieve existing bookmark value if it is available in the state or assign empty dict.
+            # Because we need to write bookmark value for each sub type inside the account_id. 
+            state['bookmarks'][stream][account_id] = state['bookmarks'].get(stream, {}).get(account_id, {})
+            state['bookmarks'][stream][account_id][sub_type] = value
+            LOGGER.info('Stream: {} Subtype: {} - Write state, bookmark value: {}'.format(stream, sub_type, value))
+
+        else:
+            state['bookmarks'][stream][account_id] = value # Update bookmark value for particular account
+            LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
+        
+        singer.write_state(state)
             
     # Converts cursor object to dictionary
     def obj_to_dict(self, obj):
@@ -147,11 +166,11 @@ class TwitterAds:
         
         try:
             request = Request(client, 'get', resource, params=params) #, stream=True)
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, err.details))
-            raise err
-        cursor = Cursor(None, request)
+            cursor = Cursor(None, request)
+        except Exception as e:
+            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         return cursor
 
     # method for HTTP post api call
@@ -159,10 +178,10 @@ class TwitterAds:
         resource = '/{}/{}'.format(API_VERSION, path)
         try:
             response = Request(client, 'post', resource, params=params, body=body).perform()
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
+            # see tap-twitter-ads.client for more details
+            raise_for_error(e)
         response_body = response.body # Dictionary response of POST request
         return response_body
 
@@ -174,10 +193,10 @@ class TwitterAds:
             response = Request(
                 client, 'get', resource.path, domain=domain, raw_body=True, stream=True).perform()
             response_body = response.body
-        except Error as err:
-            # see twitter_ads.error for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, err.details))
-            raise err
+        except Exception as e:
+            # see tap-twitter-ads.client for more details
+            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
+            raise_for_error(e)
         return response_body
 
     # List selected fields from stream catalog
@@ -284,10 +303,9 @@ class TwitterAds:
         LOGGER.info('sub_types = {}'.format(sub_types)) # COMMENT OUT
 
         # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, stream_name, start_date)
+        last_datetime = self.get_bookmark(state, stream_name, start_date, account_id)
         if not last_datetime or last_datetime is None:
             last_datetime = start_date
-        last_dttm = strptime_to_utc(last_datetime)
 
         # NOTE: Risk of syncing indefinitely and never getting bookmark
         max_bookmark_value = None
@@ -295,6 +313,13 @@ class TwitterAds:
         total_records = 0
         # Loop through sub_types (for tweets endpoint), all other endpoints loop once
         for sub_type in sub_types:
+
+            if stream_name == "tweets" and last_datetime != start_date:
+                # Tweets stream contains two separate bookmarks for each sub_type(PUBLISHED, SCHEDULED)
+                last_dttm = strptime_to_utc(last_datetime.get(sub_type, start_date))
+            else:
+                last_dttm = strptime_to_utc(last_datetime)
+
             LOGGER.info('sub_type = {}'.format(sub_type)) # COMMENT OUT
 
             # Reset params and path for each sub_type
@@ -374,17 +399,31 @@ class TwitterAds:
                             bookmark_value_str = record_dict.get(bookmark_field)
                             bookmark_value, max_bookmark_value_str = self.get_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
 
-                            if i == 0:
+                            if i == 0 and sub_type != "SCHEDULED": # SCHEDULED type tweets response do not contain records in sorted order.
                                 # If first record then set it as max_bookmark_value
                                 max_bookmark_value = max_bookmark_value_str
 
-                            if bookmark_value < last_dttm:
-                                # Skip all records from now onwards because the replication key value in record is less than last saved bookmark value.
-                                # Records are in descending order of bookmark value.
+                            # Bookmark mechanism for SCHEDULED type tweets
+                            if sub_type == "SCHEDULED":
+                                if not max_bookmark_dttm:
+                                    # Assign maximum bookmark value to last saved state
+                                    max_bookmark_dttm = last_dttm
+                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                                if bookmark_value >= max_bookmark_dttm:
+                                    # If replication key value of current record greater than maximum bookmark then update it.
+                                    max_bookmark_dttm = bookmark_value
+                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%S%z')
+
+                                if bookmark_value < last_dttm:
+                                    # Skip record if replication value less than last saved state
+                                    continue
+
+                            elif bookmark_value < last_dttm:
                                 # Finish looping
-                                LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
-                                    stream_name))
+                                LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
                                 break
+
                         else:
                             bookmark_value = last_dttm
 
@@ -418,6 +457,11 @@ class TwitterAds:
 
                             # End: for record in cursor
                         # End: with metrics as counter
+
+                    # Update the state with the max_bookmark_value for the tweets stream
+                    if stream_name == "tweets":
+                        self.write_bookmark(state, stream_name, max_bookmark_value, account_id, sub_type)
+                        max_bookmark_dttm = None
 
             # Loop through children and chunks of parent_ids
             if children:
@@ -535,9 +579,9 @@ class TwitterAds:
             # pylint: enable=line-too-long
             # End: for sub_type in sub_types
 
-        # Update the state with the max_bookmark_value for the stream if stream is selected
-        if bookmark_field and stream_name in selected_streams:
-            self.write_bookmark(state, stream_name, max_bookmark_value)
+        # Update the state with the max_bookmark_value for all other streams except tweets stream if stream is selected
+        if bookmark_field  and stream_name in selected_streams and stream_name != "tweets":
+            self.write_bookmark(state, stream_name, max_bookmark_value, account_id)
 
         return total_records
         # End sync_endpoint
@@ -595,7 +639,7 @@ class Reports(TwitterAds):
         LOGGER.info('Account ID: {} - timezone: {}'.format(account_id, tzone))
 
         # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, report_name, start_date)
+        last_datetime = self.get_bookmark(state, report_name, start_date, account_id)
         last_dttm = strptime_to_utc(last_datetime).astimezone(timezone)
         max_bookmark_value = last_datetime
 
@@ -765,13 +809,13 @@ class Reports(TwitterAds):
             stream = catalog.get_stream(report_name)
             schema = stream.schema.to_dict()
             stream_metadata = metadata.to_map(stream.metadata)
-            
+
             # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
             # RISK: What if some reports error or don't finish?
             # Possibly move this code block withing ASYNC Status Check
             total_records = 0
             for async_results_url in async_results_urls:
-                
+
                 # GET DOWNLOAD DATA FROM URL
                 LOGGER.info('Report: {} - GET async data from URL: {}'.format(
                     report_name, async_results_url))
@@ -815,7 +859,7 @@ class Reports(TwitterAds):
                 # End: for async_results_url in async_results_urls
 
             # Update the state with the max_bookmark_value for the date window
-            self.write_bookmark(state, report_name, max_bookmark_value)
+            self.write_bookmark(state, report_name, max_bookmark_value, account_id)
 
             # Increment date window
             window_start = window_end
@@ -869,7 +913,7 @@ class Reports(TwitterAds):
 
         elif report_entity == 'ORGANIC_TWEET':
             metric_groups = ['ENGAGEMENT', 'VIDEO']
-        
+
         return metric_groups
 
 
@@ -1116,7 +1160,7 @@ class Reports(TwitterAds):
             j = j + 1 # increment job status check counter
             # End: async_job_status in async_job_statuses
         return async_results_urls
-    
+
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts
 class Accounts(TwitterAds):
     tap_stream_id = "accounts"
@@ -1187,59 +1231,16 @@ class Campaigns(TwitterAds):
         'cursor': None
     }
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/website#website-cards
-class CardsWebsite(TwitterAds):
-    tap_stream_id = "cards_website"
-    path = 'accounts/{account_id}/cards/website'
+# Reference: https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards
+class Cards(TwitterAds):
+    tap_stream_id = "cards"
+    path = 'accounts/{account_id}/cards'
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'INCREMENTAL'
     replication_keys = ['updated_at']
     params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-class CardsVideoWebsite(TwitterAds):
-    tap_stream_id = "cards_video_website"
-    path = 'accounts/{account_id}/cards/video_website'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-app-download#image-app-download-cards
-class CardsImageAppDownload(TwitterAds):
-    tap_stream_id = "cards_image_app_download"
-    path = 'accounts/{account_id}/cards/image_app_download'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-app-download#video-app-download-cards
-class CardsVideoAppDownload(TwitterAds):
-    tap_stream_id = "cards_video_app_download"
-    path = 'accounts/{account_id}/cards/video_app_download'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
+        'include_legacy_cards': 'true',
         'sort_by': ['updated_at-desc'],
         'with_deleted': '{with_deleted}',
         'count': 1000,
@@ -1291,36 +1292,6 @@ class CardsVideoConversation(TwitterAds):
         'cursor': None
     }
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-direct-message#image-direct-message-cards
-class CardsImageDirectMessage(TwitterAds):
-    tap_stream_id = "cards_image_direct_message"
-    path = 'accounts/{account_id}/cards/image_direct_message'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-direct-message#video-direct-message-cards
-class CardsVideoDirectMessage(TwitterAds):
-    tap_stream_id = "cards_video_direct_message"
-    path = 'accounts/{account_id}/cards/video_direct_message'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories
 class ContentCategories(TwitterAds):
     tap_stream_id = "content_categories"
@@ -1328,10 +1299,7 @@ class ContentCategories(TwitterAds):
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
+    params = {}
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments
 class FundingInstruments(TwitterAds):
@@ -1355,7 +1323,10 @@ class IabCategories(TwitterAds):
     data_key = 'data'
     key_properties = ['id']
     replication_method = 'FULL_TABLE'
-    params = {}
+    params = {
+        'count': 1000,
+        'cursor': None
+    }
 
 # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-criteria#targeting-criteria
 class TargetingCriteria(TwitterAds):
@@ -1666,15 +1637,10 @@ STREAMS = {
     "advertiser_business_categories": AdvertiserBusinessCategories,
     "tracking_tags": TrackingTags,
     "campaigns": Campaigns,
-    "cards_website": CardsWebsite,
-    "cards_video_website": CardsVideoWebsite,
-    "cards_image_app_download": CardsImageAppDownload,
-    "cards_video_app_download": CardsVideoAppDownload,
+    "cards": Cards,
     "cards_poll": CardsPoll,
     "cards_image_conversation": CardsImageConversation,
     "cards_video_conversation": CardsVideoConversation,
-    "cards_image_direct_message": CardsImageDirectMessage,
-    "cards_video_direct_message": CardsVideoDirectMessage,
     "content_categories": ContentCategories,
     "funding_instruments": FundingInstruments,
     "iab_categories": IabCategories,

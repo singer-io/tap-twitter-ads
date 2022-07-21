@@ -20,15 +20,11 @@ This tap:
   - [tracking_tags](https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags#tracking-tags)
   - [campaigns](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns)
   - **cards**:
-    - [image_app_download](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-app-download#image-app-download-cards)
+    - [cards](https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards)
     - [image_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-conversation#image-conversation-cards)
-    - [image_direct_message](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-direct-message#image-direct-message-cards)
     - [poll](https://developer.twitter.com/en/docs/ads/creatives/api-reference/poll#poll-cards)
-    - [video_app_download](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-app-download#video-app-download-cards)
     - [video_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-conversation#video-conversation-cards)
-    - [video_direct_message](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-direct-message#video-direct-message-cards)
-    - [video_website](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-website#video-website-cards)
-    - [website](https://developer.twitter.com/en/docs/ads/creatives/api-reference/website#website-cards)
+    
   - [content_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories)
   - [funding_instruments](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments)
   - [iab_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/iab-categories#iab-categories)
@@ -118,6 +114,7 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     - `country_codes`: Comma-delimited list of ISO 2-letter country codes for targeting and segmenttation.
     - `page_size`: An optional parameter to configure custom page_size.
     - `reports`: Object array of specified reports with name, entity, segment, and granularity.
+    - `request_timeout`: To configure the read and connect timeout for twitter-ads client. Default is 300 seconds.
 
     ```json
     {
@@ -145,7 +142,8 @@ The process is described in [Obtaining Ads Account Credential](https://developer
             "segment": "REGIONS",
             "granularity": "DAY"
             }
-        ]
+        ],
+        "request_timeout": 300
     }
     ```
     
@@ -156,8 +154,14 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     {
         "currently_syncing": "creatives",
         "bookmarks": {
-            "accounts": "2019-06-11T13:37:55Z",
-            "account_media": "2019-06-19T19:48:42Z",
+            "accounts": {
+                "account_id_1": "2019-06-11T13:37:55Z",
+                "account_id_2": "2019-06-11T18:37:55Z",
+            },
+            "account_media": {
+              "account_id_1": "2019-06-19T19:48:42Z",
+              "account_id_2": "2019-05-19T19:48:42Z"
+            }
             "..."
         }
     }

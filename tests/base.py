@@ -20,6 +20,7 @@ class TwitterAds(unittest.TestCase):
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
     PAGE_SIZE = 1000
+    account_id = ""
 
     def tap_name(self):
         return "tap-twitter-ads"
@@ -60,6 +61,7 @@ class TwitterAds(unittest.TestCase):
                 }
             ]
         }
+        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(" ")[0]
         if original:
             return return_value
 
@@ -112,15 +114,10 @@ class TwitterAds(unittest.TestCase):
                 self.OBEYS_START_DATE: False
             },
             "campaigns": default_metadata,
-            "cards_website": default_metadata,
-            "cards_video_website": default_metadata,
-            "cards_image_app_download": default_metadata,
-            "cards_video_app_download": default_metadata,
+            "cards": default_metadata,
             "cards_poll": default_metadata,
             "cards_image_conversation": default_metadata,
             "cards_video_conversation": default_metadata,
-            "cards_image_direct_message": default_metadata,
-            "cards_video_direct_message": default_metadata,
             "content_categories": {
                 self.PRIMARY_KEYS: {"id"},
                 self.REPLICATION_METHOD: self.FULL_TABLE,
@@ -185,21 +182,19 @@ class TwitterAds(unittest.TestCase):
         return set(self.expected_metadata().keys())
 
     def expected_primary_keys(self):
-        """
-        return a dictionary with key of table name and value as a set of primary key fields"""
+        """ return a dictionary with the key of table name and value as a set of primary key fields """
         return {table: properties.get(self.PRIMARY_KEYS) or set()
                 for table, properties
                 in self.expected_metadata().items()}
 
     def expected_replication_keys(self):
-        """
-        return a dictionary with key of table name and value as a set of replication key fields"""
+        """return a dictionary with the key of table name and value as a set of replication key fields"""
         return {table: properties.get(self.REPLICATION_KEYS, set())
                 for table, properties
                 in self.expected_metadata().items()}
 
     def expected_automatic_fields(self):
-        """return a dictionary with key of table name and value as a set of automatic key fields"""
+        """return a dictionary with the key of table name and value as a set of automatic key fields"""
 
         return {table: ((self.expected_primary_keys().get(table) or set()) |
                         (self.expected_replication_keys().get(table) or set()))
@@ -334,16 +329,16 @@ class TwitterAds(unittest.TestCase):
         timedelta_by_stream = {stream: [0,0,1]  # {stream_name: [days, hours, minutes], ...}
                                for stream in self.expected_streams()}
 
-        stream_to_calculated_state = {stream: "" for stream in current_state['bookmarks'].keys()}
+        stream_to_calculated_state = {stream: {self.account_id: ""} for stream in current_state['bookmarks'].keys()}
         for stream, state in current_state['bookmarks'].items():
-            state_as_datetime = dateutil.parser.parse(state)
+            state_as_datetime = dateutil.parser.parse(state[self.account_id])
 
             days, hours, minutes = timedelta_by_stream[stream]
             calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
 
             calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
-            stream_to_calculated_state[stream] = calculated_state_formatted
+            stream_to_calculated_state[stream][self.account_id] = calculated_state_formatted
 
         return stream_to_calculated_state
 

@@ -19,7 +19,7 @@ class TwitterAds(unittest.TestCase):
     FULL_TABLE = "FULL_TABLE"
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
-    PAGE_SIZE = 1000
+    PAGE_SIZE = 200
     account_id = ""
 
     def tap_name(self):

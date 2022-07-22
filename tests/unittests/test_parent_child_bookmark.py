@@ -39,9 +39,6 @@ class TestParentChildBookmarkingWithNoData(unittest.TestCase):
         test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, STREAM_NAME, 
                     LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], selected_streams=['line_items', 'targeting_criteria'])
 
-        # Verify that No bookmark is written for child stream
-        self.assertIsNone(state.get("bookmarks").get(STREAM_NAME).get(ACCOUNT_ID))
-
         # Verify that Request.perform called only once for parent.
         self.assertEqual(mock_request.call_count, 1)
 

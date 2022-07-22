@@ -234,15 +234,9 @@ The process is described in [Obtaining Ads Account Credential](https://developer
       | campaigns_conversion_tags_daily_report     | 0       | 1       |
       | campaigns_daily_report                     | 10      | 1       |
       | campaigns_genders_hourly_report            | 504     | 1       |
-      | cards_image_app_download                   | 0       | 1       |
       | cards_image_conversation                   | 0       | 1       |
-      | cards_image_direct_message                 | 0       | 1       |
       | cards_poll                                 | 0       | 1       |
-      | cards_video_app_download                   | 0       | 1       |
       | cards_video_conversation                   | 0       | 1       |
-      | cards_video_direct_message                 | 0       | 1       |
-      | cards_video_website                        | 0       | 1       |
-      | cards_website                              | 0       | 1       |
       | content_categories                         | 392     | 1       |
       | funding_instruments                        | 1       | 1       |
       | funding_instruments_age_daily_report       | 175     | 1       |

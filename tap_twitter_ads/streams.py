@@ -239,7 +239,7 @@ class TwitterAds:
             # If first record then set it as max_bookmark_value
             if record_counter == 0:
                 max_bookmark_dttm = bookmark_value
-                max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
+                max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
         else:
             # pylint: disable=line-too-long
             LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
@@ -402,12 +402,12 @@ class TwitterAds:
                                 if not max_bookmark_dttm:
                                     # Assign maximum bookmark value to last saved state
                                     max_bookmark_dttm = last_dttm
-                                    max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
+                                    max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
 
                                 if bookmark_value >= max_bookmark_dttm:
                                     # If replication key value of current record greater than maximum bookmark then update it.
                                     max_bookmark_dttm = bookmark_value
-                                    max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
+                                    max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
 
                                 if bookmark_value < last_dttm:
                                     # Skip record if replication value less than last saved state

@@ -28,6 +28,7 @@ from tap_twitter_ads.transform import transform_record, transform_report
 import copy
 from tap_twitter_ads.client import raise_for_error
 
+BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 LOGGER = singer.get_logger()
 
 # Currently syncing sets the stream currently being delivered in the state.
@@ -238,7 +239,7 @@ class TwitterAds:
             # If first record then set it as max_bookmark_value
             if record_counter == 0:
                 max_bookmark_dttm = bookmark_value
-                max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%SZ')
+                max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
         else:
             # pylint: disable=line-too-long
             LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
@@ -401,12 +402,12 @@ class TwitterAds:
                                 if not max_bookmark_dttm:
                                     # Assign maximum bookmark value to last saved state
                                     max_bookmark_dttm = last_dttm
-                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                    max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
 
                                 if bookmark_value >= max_bookmark_dttm:
                                     # If replication key value of current record greater than maximum bookmark then update it.
                                     max_bookmark_dttm = bookmark_value
-                                    max_bookmark_value = max_bookmark_dttm.strftime('%Y-%m-%dT%H:%M:%SZ')
+                                    max_bookmark_value = max_bookmark_dttm.strftime('BOOKMARK_FORMAT')
 
                                 if bookmark_value < last_dttm:
                                     # Skip record if replication value less than last saved state
@@ -572,7 +573,7 @@ class TwitterAds:
             # pylint: enable=line-too-long
             # End: for sub_type in sub_types
 
-            LOGGER.info('Stream: {} - max_bookmark_value: {}'.format(stream_name, max_bookmark_value))
+        LOGGER.info('Stream: {}, max_bookmark_value: {}'.format(stream_name, max_bookmark_value))
 
         # Update the state with the max_bookmark_value for all other streams except tweets stream if stream is selected
         if bookmark_field  and stream_name in selected_streams and stream_name != "tweets":
@@ -1238,7 +1239,7 @@ class Cards(TwitterAds):
         'include_legacy_cards': 'true',
         'sort_by': ['updated_at-desc'],
         'with_deleted': '{with_deleted}',
-        # As per the API document, the maximum page size is 1000 but API throws an error if a page size of more than 200 is passed
+        # As per the API document, the maximum page size is 1000 but API throws an error if a page size passed more than 200
         'count': 200,
         'cursor': None
     }

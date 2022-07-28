@@ -2,7 +2,7 @@ import os
 import json
 import singer
 from singer import metadata
-from tap_twitter_ads.streams import flatten_streams
+from tap_twitter_ads.streams import STREAMS
 
 
 LOGGER = singer.get_logger()
@@ -73,28 +73,32 @@ def load_shared_schema_refs():
     return shared_schema_refs
 
 
-def resolve_schema_references(schema, refs):
-    if '$ref' in schema['properties']:
-        link = schema['properties']['$ref']
-        schema['properties'].update(refs[link])
-        schema['properties']['$ref']
+def make_replication_key_automatic(mdata, schema, replication_keys):
+    # Make all replication keys as inclusion of automatic.
+    mdata = metadata.to_map(mdata)
 
+    # Loop through all keys and if keys found in replication_keys then make it automatic inclusion
+    for field_name in schema['properties'].keys():
+
+        if replication_keys and field_name in replication_keys:
+            mdata = metadata.write(mdata, ('properties', field_name), 'inclusion', 'automatic')
+
+    return metadata.to_list(mdata)
 
 def get_schemas(reports):
     schemas = {}
     field_metadata = {}
 
     refs = load_shared_schema_refs()
-    flat_streams = flatten_streams()
 
     # JSON schemas for each stream endpoint
-    for stream_name, stream_metadata in flat_streams.items():
+    for stream_name, stream_metadata in STREAMS.items():
         schema_path = get_abs_path('schemas/{}.json'.format(stream_name))
         with open(schema_path) as file:
             schema = json.load(file)
 
         schemas[stream_name] = schema
-        resolve_schema_references(schema, refs)
+        schema = singer.resolve_schema_references(schema, refs)
         mdata = metadata.new()
 
         # Documentation:
@@ -103,10 +107,13 @@ def get_schemas(reports):
         # https://github.com/singer-io/singer-python/blob/master/singer/metadata.py#L25-L44
         mdata = metadata.get_standard_metadata(
             schema=schema,
-            key_properties=stream_metadata.get('key_properties', None),
-            valid_replication_keys=stream_metadata.get('replication_keys', None),
-            replication_method=stream_metadata.get('replication_method', None)
+            key_properties= (hasattr(stream_metadata, 'key_properties') or None) and stream_metadata.key_properties,
+            valid_replication_keys=(hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys,
+            replication_method=(hasattr(stream_metadata, 'replication_method') or None) and stream_metadata.replication_method
         )
+        # Make replication keys of automatic inclusion
+        mdata = make_replication_key_automatic(mdata, schema, (hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys)
+
         field_metadata[stream_name] = mdata
 
     # JSON schemas for each report
@@ -170,7 +177,7 @@ def get_schemas(reports):
             schema = json.load(file)
 
         # Replace $ref nodes with reference nodes in schema
-        resolve_schema_references(schema, refs)
+        schema = singer.resolve_schema_references(schema, refs)
 
         # If NO_SEGMENT, then remove Segment fields
         if report_segment == 'NO_SEGMENT':
@@ -193,6 +200,10 @@ def get_schemas(reports):
             valid_replication_keys=['end_time'],
             replication_method='INCREMENTAL'
         )
+
+        # Make replication keys of automatic inclusion
+        mdata = make_replication_key_automatic(mdata, schema, ['end_time'])
+
         field_metadata[report_name] = mdata
 
     return schemas, field_metadata

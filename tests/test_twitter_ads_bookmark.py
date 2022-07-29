@@ -41,6 +41,7 @@ class BookmarkTest(TwitterAds):
         # So, page_size of 200 get a lot of time to get all records.
         self.run_test(streams_to_test={"targeting_locations", "targeting_conversations"}, page_size=1000)
 
+        # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
         # So, revert back page_size to 200 for the rest of the streams.
         streams_to_test = streams_to_test - {"targeting_locations", "targeting_conversations"}
         self.run_test(streams_to_test, page_size=200)

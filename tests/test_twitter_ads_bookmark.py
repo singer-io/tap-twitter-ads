@@ -37,6 +37,19 @@ class BookmarkTest(TwitterAds):
         # Invalid bookmark for tweets stream - https://jira.talendforge.org/browse/TDL-18465
         streams_to_test = streams_to_test - {'tweets'}
 
+        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
+        # So, page_size of 200 get a lot of time to get all records.
+        self.run_test(streams_to_test={"targeting_locations", "targeting_conversations"}, page_size=1000)
+
+        # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
+        # So, revert back page_size to 200 for the rest of the streams.
+        streams_to_test = streams_to_test - {"targeting_locations", "targeting_conversations"}
+        self.run_test(streams_to_test, page_size=200)
+
+    def run_test(self, streams_to_test, page_size):
+
+        self.PAGE_SIZE = page_size
+
         expected_replication_keys = self.expected_replication_keys()
         expected_replication_methods = self.expected_replication_method()
 
@@ -101,8 +114,8 @@ class BookmarkTest(TwitterAds):
                                         second_sync_records.get(
                                             stream, {}).get('messages', [])
                                         if record.get('action') == 'upsert']
-                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
-                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: None}).get(stream, {}).get(self.account_id)
+                first_bookmark_value = first_sync_bookmarks.get('bookmarks', {stream: {}}).get(stream, {}).get(self.account_id)
+                second_bookmark_value = second_sync_bookmarks.get('bookmarks', {stream: {}}).get(stream, {}).get(self.account_id)
 
 
                 if expected_replication_method == self.INCREMENTAL:

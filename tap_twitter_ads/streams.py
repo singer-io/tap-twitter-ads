@@ -14,6 +14,9 @@
 #   bookmark_type: Data type for bookmark, integer or datetime
 import singer
 import time
+import backoff
+from requests.exceptions import ConnectionError
+import functools
 import pytz
 from singer import metrics, metadata, Transformer, utils
 from urllib.parse import urlparse
@@ -62,6 +65,22 @@ def get_page_size(config, default_page_size):
         return page_size
     except Exception:
         raise Exception("The entered page size ({}) is invalid".format(page_size))
+
+# Backoff ConnectionError 5 times.
+def retry_pattern(fnc):
+    @backoff.on_exception(backoff.constant,
+                          ConnectionError,
+                          max_tries=5,
+                          interval=60,
+                          jitter=None
+                          )
+    @functools.wraps(fnc)
+    def wrapper(*args, **kwargs):
+        return fnc(*args, **kwargs)
+    return wrapper
+
+# Added decorator over functions of twitter SDK to perform backoff over SDK method Request.perform the method
+Request.perform = retry_pattern(Request.perform)
 
 # parent class for all the stream classes
 class TwitterAds:

@@ -34,9 +34,9 @@ class PaginationTest(TwitterAds):
         self.run_test(expected_streams=expected_streams - {"targeting_locations", "targeting_conversations"}, page_size=2)    
         
         # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
-        # So, page_size of 2 get lot of time to get all records.
-        self.run_test(expected_streams={"targeting_locations", "targeting_conversations"}, page_size=200)
-    
+        # So, page_size of 2 get a lot of time to get all records.
+        self.run_test(expected_streams={"targeting_locations", "targeting_conversations"}, page_size=1000)
+
     def run_test(self, expected_streams, page_size):
 
         streams_to_test = expected_streams

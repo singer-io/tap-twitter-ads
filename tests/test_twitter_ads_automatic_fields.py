@@ -28,6 +28,19 @@ class AutomaticFieldsTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
+        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
+        # So, page_size of 200 get a lot of time to get all records.
+        self.run_test(streams_to_test={"targeting_locations", "targeting_conversations"}, page_size=1000)
+
+        # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
+        # So, revert back page_size to 200 for the rest of the streams.
+        streams_to_test = streams_to_test - {"targeting_locations", "targeting_conversations"}
+        self.run_test(streams_to_test, page_size=200)
+
+    def run_test(self, streams_to_test, page_size):
+
+        self.PAGE_SIZE = page_size
+
         conn_id = connections.ensure_connection(self)
 
         found_catalogs = self.run_and_verify_check_mode(conn_id)

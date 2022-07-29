@@ -329,8 +329,8 @@ class TwitterAds(unittest.TestCase):
         timedelta_by_stream = {stream: [0,0,1]  # {stream_name: [days, hours, minutes], ...}
                                for stream in self.expected_streams()}
 
-        stream_to_calculated_state = {stream: {self.account_id: ""} for stream in current_state['bookmarks'].keys()}
-        for stream, state in current_state['bookmarks'].items():
+        stream_to_calculated_state = {stream: {self.account_id: ""} for stream in current_state.get('bookmarks', {}).keys()}
+        for stream, state in current_state.get('bookmarks', {}).items():
             state_as_datetime = dateutil.parser.parse(state[self.account_id])
 
             days, hours, minutes = timedelta_by_stream[stream]

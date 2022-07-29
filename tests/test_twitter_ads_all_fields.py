@@ -99,6 +99,24 @@ class AllFieldsTest(TwitterAds):
                                             'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 
                                             'targeting_tv_markets', 'targeting_tv_shows'}
 
+        # Endpoints are swapped for content_categories and iab_categories streams - https://jira.talendforge.org/browse/TDL-18374        
+        streams_to_test = streams_to_test - {'iab_categories', 'content_categories'}
+
+        # Invalid endpoint for targeting_events stream - https://jira.talendforge.org/browse/TDL-18463
+        streams_to_test = streams_to_test - {'targeting_events'}
+
+        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
+        # So, page_size of 200 get a lot of time to get all records.
+        self.run_test(streams_to_test={"targeting_locations", "targeting_conversations"}, page_size=1000)
+
+        # So, revert back page_size to 200 for rest of the streams.
+        streams_to_test = streams_to_test - {"targeting_locations", "targeting_conversations"}
+        self.run_test(streams_to_test, page_size=200)
+
+    def run_test(self, streams_to_test, page_size):
+
+        self.PAGE_SIZE = page_size
+
         expected_automatic_fields = self.expected_automatic_fields()
         conn_id = connections.ensure_connection(self)
 

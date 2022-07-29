@@ -37,10 +37,17 @@ class StartDateTest(TwitterAds):
         self.run_start_date(expected_stream_2, new_start_date="2019-06-01T00:00:00Z")
         
         # running start_date_test for rest of the streams
-        streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2
+
+        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
+        # So, page_size of 200 get a lot of time to get all records.
+        expected_stream_3 = {"targeting_locations", "targeting_conversations"}
+        self.run_start_date(streams_to_test=expected_stream_3, new_start_date="2022-04-06T00:00:00Z", page_size=1000)
+
+        # So, revert back page_size to 200 for the rest of the streams.
+        streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2 - expected_stream_3
         self.run_start_date(streams_to_test, new_start_date="2022-04-06T00:00:00Z")
 
-    def run_start_date(self, streams_to_test, new_start_date):
+    def run_start_date(self, streams_to_test, new_start_date, page_size = 200):
         """
         Test that the start_date configuration is respected
         • verify that a sync with a later start date has at least one record synced
@@ -50,6 +57,7 @@ class StartDateTest(TwitterAds):
         """
 
         expected_replication_methods = self.expected_replication_method()
+        self.PAGE_SIZE = page_size
 
         self.start_date_1 = self.get_properties().get('start_date')
         self.start_date_2 = new_start_date

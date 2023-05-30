@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.1
+  * Dependabot update [#34](https://github.com/singer-io/tap-twitter-ads/pull/34)
+
 ## 1.0.0
   * Upgraded SDK and API version [#19](https://github.com/singer-io/tap-twitter-ads/pull/19)
   * Added credentials check in discover mode [#15](https://github.com/singer-io/tap-twitter-ads/pull/15)

@@ -152,7 +152,7 @@ class TwitterAds:
             # Retrieve existing bookmark value if it is available in the state or assign empty dict.
             # Because we need to write bookmark value for each sub type inside the account_id. 
             state['bookmarks'][stream][account_id] = state['bookmarks'].get(stream, {}).get(account_id, {})
-            state['bookmarks'][stream][account_id][sub_type] = value
+            state['bookmarks'][stream][account_id][sub_type] = value[sub_type]
             LOGGER.info('Stream: {} Subtype: {} - Write state, bookmark value: {}'.format(stream, sub_type, value))
 
         else:

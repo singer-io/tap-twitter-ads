@@ -152,15 +152,14 @@ class TwitterAds:
             # Retrieve existing bookmark value if it is available in the state or assign empty dict.
             # Because we need to write bookmark value for each sub type inside the account_id. 
             state['bookmarks'][stream][account_id] = state['bookmarks'].get(stream, {}).get(account_id, {})
-            state['bookmarks'][stream][account_id][sub_type] = value[sub_type]
+            state['bookmarks'][stream][account_id][sub_type] = value
             LOGGER.info('Stream: {} Subtype: {} - Write state, bookmark value: {}'.format(stream, sub_type, value))
 
         else:
             state['bookmarks'][stream][account_id] = value # Update bookmark value for particular account
             LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
-        
         singer.write_state(state)
-            
+
     # Converts cursor object to dictionary
     def obj_to_dict(self, obj):
         if not hasattr(obj, "__dict__"):
@@ -329,7 +328,8 @@ class TwitterAds:
 
             if stream_name == "tweets" and last_datetime != start_date:
                 # Tweets stream contains two separate bookmarks for each sub_type(PUBLISHED, SCHEDULED)
-                last_dttm = strptime_to_utc(last_datetime.get(sub_type, start_date))
+                max_bookmark_value = last_datetime.get(sub_type, start_date)
+                last_dttm = strptime_to_utc(max_bookmark_value)
             else:
                 last_dttm = strptime_to_utc(last_datetime)
 

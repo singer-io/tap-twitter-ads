@@ -1159,7 +1159,7 @@ class Reports(TwitterAds):
             jobs_still_running = False
             for async_job_status in async_job_statuses:
                 job_status_dict = self.obj_to_dict(async_job_status)
-                job_id = job_status_dict.get('id')
+                job_id = str(job_status_dict.get('id'))
                 job_status = job_status_dict.get('status')
                 if job_status == 'PROCESSING':
                     jobs_still_running = True

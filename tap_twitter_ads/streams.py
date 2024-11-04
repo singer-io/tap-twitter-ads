@@ -1119,7 +1119,7 @@ class Reports(TwitterAds):
                 queued_job_params)
 
             queued_job_data = queued_job.get('data')
-            queued_job_id = queued_job_data.get('id_str')
+            queued_job_id = queued_job_data.get('id')
             queued_job_ids.append(queued_job_id)
             LOGGER.info('queued_job_ids = {}'.format(queued_job_ids)) # COMMENT OUT
             # End: for chunk_ids in entity_ids
@@ -1159,7 +1159,7 @@ class Reports(TwitterAds):
             jobs_still_running = False
             for async_job_status in async_job_statuses:
                 job_status_dict = self.obj_to_dict(async_job_status)
-                job_id = job_status_dict.get('id_str')
+                job_id = job_status_dict.get('id')
                 job_status = job_status_dict.get('status')
                 if job_status == 'PROCESSING':
                     jobs_still_running = True

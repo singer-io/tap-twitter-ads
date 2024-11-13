@@ -16,8 +16,11 @@
     "dimensions": { 
       "$ref": "dimensions.json" 
     },
-    "web_conversions": { 
+    "web_conversion": { 
       "$ref": "web_conversion.json" 
+    },
+    "appended": {
+      "$ref": "appended.json"       
     }
   }
 }

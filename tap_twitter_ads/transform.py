@@ -112,6 +112,8 @@ def transform_report(report_name, report_data, account_id):
                         group = 'video'
                     elif key[0:11] == 'conversion_':
                         group = 'web_conversion'
+                    elif key[0:13] == 'auto_created_':
+                        group = 'appended'
                     elif key[0:18] == 'mobile_conversion_':
                         group = 'mobile_conversion'
                     else:

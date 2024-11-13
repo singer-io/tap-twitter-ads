@@ -1,0 +1,12 @@
+{
+    "type": ["null", "object"],
+    "additionalProperties": false,
+    "properties": {
+      "auto_created_conversion_session": { 
+        "type": ["null", "integer"]
+      },
+      "auto_created_conversion_landing_page_view": { 
+        "type": ["null", "integer"]
+      }
+    }
+  }

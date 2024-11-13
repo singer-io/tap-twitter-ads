@@ -5,7 +5,7 @@
     "conversion_purchases": { 
       "$ref": "web_conversion_obj.json" 
     },
-    "conversion_signups": { 
+    "conversion_sign_ups": { 
       "$ref": "web_conversion_obj.json" 
     },
     "conversion_site_visits": { 

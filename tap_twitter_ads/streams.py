@@ -672,10 +672,18 @@ class Reports(TwitterAds):
             date_window_size = 85
         window_start = abs_start
         window_end = (abs_start + timedelta(days=date_window_size))
+        # I think in this step, you absolutely need to consider daylight saving time
+        # For example, adding 42 days from 2024-10-19 will lead to a time not in daylight saving time.
+        # Similar case for window_start (we might substract)
+        window_start = self.remove_hours_local(window_start, timezone)
+        window_end = self.remove_hours_local(window_end, timezone)
+
         window_start_rounded = None
         window_end_rounded = None
         if window_end > abs_end:
             window_end = abs_end
+
+        LOGGER.info("Haitao Debug: window_start: {}, window_end: {}".format(window_start, window_end))
 
         # DATE WINDOW LOOP
         while window_start != abs_end:

@@ -247,12 +247,6 @@ class TwitterAds:
             hour=0, minute=0, second=0, microsecond=0)
         return new_dttm
 
-    def get_midnight_time_from_str(self, time_str, timezone, format='%Y-%m-%dT%H:%M:%S%z'):
-        time_obj = datetime.strptime(time_str, format)
-        time_obj = time_obj.astimezone(timezone).replace(
-            hour=0, minute=0, second=0, microsecond=0)
-        return time_obj.strftime(format)        
-
     def get_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
         """
         Return a maximum replication key value that is available in the record.
@@ -797,11 +791,6 @@ class Reports(TwitterAds):
                     entity_ids = entity_id_set.get('entity_ids', [])
                     start_time = entity_id_set.get('start_time')
                     end_time = entity_id_set.get('end_time')
-                    
-                    # Due to daylight saving time issue, we need to double check we have the right time!
-                    start_time = self.get_midnight_time_from_str(start_time, timezone)
-                    end_time = self.get_midnight_time_from_str(end_time, timezone)
-
                     LOGGER.info('Report: {} - placement: {}, start_time: {}, end_time: {}'.format(
                         report_name, placement, start_time, end_time))
 

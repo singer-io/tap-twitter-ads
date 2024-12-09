@@ -16,7 +16,7 @@ def hash_data(data):
 
 
 # Transform for report_data in sync_report
-def transform_report(report_name, report_data, account_id):
+def transform_report(report_name, report_data, account_id, timezone):
     time_series_length = int(report_data.get('time_series_length', 1)) # Default = 1 to loop once
     request = report_data.get('request', {})
 
@@ -58,12 +58,13 @@ def transform_report(report_name, report_data, account_id):
         # Loop through id_data records
         for datum in id_data:
             # Loop through time intervals
-            start_dttm = strptime_to_utc(start_time)
+            start_dttm = strptime_to_utc(start_time).replace(
+            hour=12, minute=0, second=0, microsecond=0)
             end_dttm = start_dttm + interval
             i = 0
             while i <= (time_series_length - 1):
-                series_start = strftime(start_dttm)
-                series_end = strftime(end_dttm)
+                series_start = start_dttm.astimezone(timezone).replace(hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%dT%H:%M:%S%z')
+                series_end = end_dttm.astimezone(timezone).replace(hour=0, minute=0, second=0, microsecond=0).strftime('%Y-%m-%dT%H:%M:%S%z')
 
                 append_record = False # Initialize; only append records w/ metric data
                 segment = datum.get('segment')

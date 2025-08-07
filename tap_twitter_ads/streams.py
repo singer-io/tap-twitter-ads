@@ -900,6 +900,7 @@ class Reports(TwitterAds):
             'MOBILE_CONVERSION',
             'LIFE_TIME_VALUE_MOBILE_CONVERSION'
         ]
+        metric_groups = None
         # Undocumented rule: CONVERSION_TAGS report segment only allows WEB_CONVERSION metric group
         if report_segment == 'CONVERSION_TAGS' and report_entity in \
             ['ACCOUNT', 'CAMPAIGN', 'LINE_ITEM', 'PROMOTED_TWEET']:

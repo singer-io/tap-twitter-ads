@@ -39,6 +39,7 @@ def transform_report(report_name, report_data, account_id):
         report_name, time_series_length))
 
     report_records = []
+    interval = None
 
     if granularity == 'DAY':
         interval = timedelta(days=1)
@@ -59,7 +60,9 @@ def transform_report(report_name, report_data, account_id):
         for datum in id_data:
             # Loop through time intervals
             start_dttm = strptime_to_utc(start_time)
-            end_dttm = start_dttm + interval
+            end_dttm = start_dttm
+            if interval:
+                end_dttm += interval
             i = 0
             while i <= (time_series_length - 1):
                 series_start = strftime(start_dttm)

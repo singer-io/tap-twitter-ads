@@ -1,7 +1,7 @@
 # Changelog
 
 ## 1.1.0
-  * Update twitter-ads SDK to v11.0.0 [#40](https://github.com/singer-io/tap-twitter-ads/pull/40)
+  * Library version upgrades [#40](https://github.com/singer-io/tap-twitter-ads/pull/40)
 
 ## 1.0.0
   * Upgraded SDK and API version [#19](https://github.com/singer-io/tap-twitter-ads/pull/19)

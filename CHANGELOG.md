@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0
+  * Update twitter-ads SDK to v11.0.0 [#40](https://github.com/singer-io/tap-twitter-ads/pull/40)
+
 ## 1.0.0
   * Upgraded SDK and API version [#19](https://github.com/singer-io/tap-twitter-ads/pull/19)
   * Added credentials check in discover mode [#15](https://github.com/singer-io/tap-twitter-ads/pull/15)
@@ -16,9 +19,6 @@
   * Added missing tap-tester test cases [#20](https://github.com/singer-io/tap-twitter-ads/pull/20)
   * Resolved ConnectionResetError [#32](https://github.com/singer-io/tap-twitter-ads/pull/32)
   
-
-## 0.0.8
-  * Update twitter-ads SDK to v11.0.0 [#40](https://github.com/singer-io/tap-twitter-ads/pull/40)
 
 ## 0.0.7
   * Update twitter-ads SDK to v9.0.1 [#13](https://github.com/singer-io/tap-twitter-ads/pull/13)

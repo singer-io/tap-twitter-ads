@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0
+ * Upgrade dependencies to allow use of python 3.12 [#41](https://github.com/singer-io/tap-twitter-ads/pull/41)
+
 ## 1.0.0
   * Upgraded SDK and API version [#19](https://github.com/singer-io/tap-twitter-ads/pull/19)
   * Added credentials check in discover mode [#15](https://github.com/singer-io/tap-twitter-ads/pull/15)

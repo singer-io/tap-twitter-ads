@@ -1121,8 +1121,9 @@ class Reports(TwitterAds):
 
             queued_job_data = queued_job.get('data')
             queued_job_id = queued_job_data.get('id_str')
-            queued_job_ids.append(queued_job_id)
-            LOGGER.info('queued_job_ids = {}'.format(queued_job_ids)) # COMMENT OUT
+            if queued_job_id:
+                queued_job_ids.append(queued_job_id)
+                LOGGER.info('queued_job_ids = {}'.format(queued_job_ids)) # COMMENT OUT
             # End: for chunk_ids in entity_ids
         return queued_job_ids
 

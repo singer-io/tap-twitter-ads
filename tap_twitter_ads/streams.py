@@ -659,7 +659,7 @@ class Reports(TwitterAds):
         max_bookmark_value = last_datetime
 
         # Get absolute start and end times
-        attribution_window = int(tap_config.get('attribution_window', '14'))
+        attribution_window = int(tap_config.get('attribution_window') or 14)
         abs_start, abs_end = self.get_absolute_start_end_time(
             report_granularity, timezone, last_dttm, attribution_window)
 

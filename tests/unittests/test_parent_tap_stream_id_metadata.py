@@ -12,7 +12,7 @@ class TestParentTapStreamIdMetadata(unittest.TestCase):
         """Test that parent-tap-stream-id is added to metadata for child streams."""
         # Mock reports (empty since we're testing stream metadata)
         reports = []
-        
+
         # Get schemas and metadata
         schemas, field_metadata = get_schemas(reports)
         

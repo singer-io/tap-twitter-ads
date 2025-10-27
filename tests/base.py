@@ -5,6 +5,7 @@ import tap_tester.menagerie as menagerie
 import tap_tester.runner as runner
 from datetime import datetime as dt
 from datetime import timedelta
+from tap_twitter_ads.streams import STREAMS
 import dateutil.parser
 import pytz
 
@@ -208,10 +209,14 @@ class TwitterAds(unittest.TestCase):
 
     def expected_parent_streams(self):
         """return a dictionary with the key of child stream name and value as the parent stream name"""
-        return {
-            'targeting_criteria': 'line_items',
-            'targeting_tv_shows': 'targeting_tv_markets'
-        }
+
+        parent_streams = {}
+        for stream_name, stream_class in STREAMS.items():
+            # Check if the stream class has a parent_stream attribute
+            if hasattr(stream_class, 'parent_stream'):
+                parent_streams[stream_name] = stream_class.parent_stream
+        
+        return parent_streams
 
 #########################
 #   Helper Methods      #

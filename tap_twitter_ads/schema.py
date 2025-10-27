@@ -113,7 +113,7 @@ def get_schemas(reports):
         )
         mdata = metadata.to_map(mdata)
 
-        parent_tap_stream_id = getattr(stream_metadata, "parent", None)
+        parent_tap_stream_id = getattr(stream_metadata, "parent_stream", None)
         if parent_tap_stream_id:
             mdata = metadata.write(mdata, (), 'parent-tap-stream-id', parent_tap_stream_id)
 

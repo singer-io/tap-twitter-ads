@@ -206,6 +206,13 @@ class TwitterAds(unittest.TestCase):
                 for table, properties
                 in self.expected_metadata().items()}
 
+    def expected_parent_streams(self):
+        """return a dictionary with the key of child stream name and value as the parent stream name"""
+        return {
+            'targeting_criteria': 'line_items',
+            'targeting_tv_shows': 'targeting_tv_markets'
+        }
+
 #########################
 #   Helper Methods      #
 #########################

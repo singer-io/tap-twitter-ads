@@ -55,6 +55,7 @@ class DiscoverTest(TwitterAds):
                 expected_replication_keys = self.expected_replication_keys()[stream]
                 expected_automatic_fields = self.expected_automatic_fields()[stream]
                 expected_replication_method = self.expected_replication_method()[stream]
+                expected_parent_stream = self.expected_parent_streams().get(stream)
 
                 # collecting actual values...
                 schema_and_metadata = menagerie.get_annotated_schema(conn_id, catalog['stream_id'])
@@ -74,6 +75,7 @@ class DiscoverTest(TwitterAds):
                     item.get("breadcrumb", ["properties", None])[1] for item in metadata
                     if item.get("metadata").get("inclusion") == "automatic"
                 )
+                actual_parent_stream = stream_properties[0].get("metadata", {}).get("parent-tap-stream-id")
 
                 actual_fields = []
                 for md_entry in metadata:
@@ -117,6 +119,11 @@ class DiscoverTest(TwitterAds):
                     self.assertEqual(self.INCREMENTAL, actual_replication_method)
                 else:
                     self.assertEqual(self.FULL_TABLE, actual_replication_method)
+
+                # verify parent-tap-stream-id is correctly set for child streams
+                self.assertEqual(expected_parent_stream, actual_parent_stream,
+                                msg="expected parent stream {} but actual is {}".format(
+                                    expected_parent_stream, actual_parent_stream))
 
                 # verify that primary keys and replication keys
                 # are given the inclusion of automatic in metadata.

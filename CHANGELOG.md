@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.0
+  * Updated metadata for streams [#43](https://github.com/singer-io/tap-twitter-ads/pull/43)
+
 ## 1.1.0
   * Library version upgrades [#40](https://github.com/singer-io/tap-twitter-ads/pull/40)
 

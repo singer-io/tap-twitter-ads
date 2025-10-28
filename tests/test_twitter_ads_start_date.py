@@ -8,7 +8,7 @@ from base import TwitterAds
 class StartDateTest(TwitterAds):
     """
     Ensure both all expected streams respect the start date. Run tap in check mode, 
-    run 1st sync with start date = 2019-03-01T00:00:00Z, run check mode and 2nd sync on a new connection with start date 2022-04-04T06:00:00Z.
+    run 1st sync with start date = 2025-03-01T00:00:00Z, run check mode and 2nd sync on a new connection with start date 2025-04-04T06:00:00Z.
     """
     
     def name(self):
@@ -30,23 +30,23 @@ class StartDateTest(TwitterAds):
 
         # running start_date_test for `line_items` and `targeting_criteria` stream
         expected_stream_1 = {"line_items", "targeting_criteria"}
-        self.run_start_date(expected_stream_1, new_start_date="2022-06-01T00:00:00Z")
+        self.run_start_date(expected_stream_1, new_start_date="2025-06-01T00:00:00Z")
         
         # running start_date_test for `targeting_events`
         expected_stream_2 = {'targeting_events'}
-        self.run_start_date(expected_stream_2, new_start_date="2019-06-01T00:00:00Z")
+        self.run_start_date(expected_stream_2, new_start_date="2025-06-01T00:00:00Z")
         
         # running start_date_test for rest of the streams
 
         # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
         # So, page_size of 200 get a lot of time to get all records.
         expected_stream_3 = {"targeting_locations", "targeting_conversations"}
-        self.run_start_date(streams_to_test=expected_stream_3, new_start_date="2022-04-06T00:00:00Z", page_size=1000)
+        self.run_start_date(streams_to_test=expected_stream_3, new_start_date="2025-04-06T00:00:00Z", page_size=1000)
 
         # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
         # So, revert back page_size to 200 for the rest of the streams.
         streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2 - expected_stream_3
-        self.run_start_date(streams_to_test, new_start_date="2022-04-06T00:00:00Z")
+        self.run_start_date(streams_to_test, new_start_date="2025-04-06T00:00:00Z")
 
     def run_start_date(self, streams_to_test, new_start_date, page_size = 200):
         """

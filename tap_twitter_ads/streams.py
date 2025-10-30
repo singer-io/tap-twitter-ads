@@ -46,6 +46,9 @@ def update_currently_syncing(state, stream_name):
     singer.write_state(state)
     LOGGER.info('Stream: {} - Currently Syncing'.format(stream_name))
 
+def format_datetime_iso8601(dt):
+    return dt.strftime('%Y-%m-%dT%H:%M:%S%z')[:-2] + ':' + dt.strftime('%Y-%m-%dT%H:%M:%S%z')[-2:]
+
 def get_page_size(config, default_page_size):
     """
     This function will get page size from config.
@@ -237,15 +240,14 @@ class TwitterAds:
 
     # remove minutes from dattime and set it to 0
     def remove_minutes_local(self, dttm, tzone):
-        new_dttm = dttm.astimezone(tzone).replace(
-            minute=0, second=0, microsecond=0)
-        return new_dttm
-
+        local_dttm = dttm.astimezone(tzone)
+        year, month, day, hour = local_dttm.year, local_dttm.month, local_dttm.day, local_dttm.hour
+        return tzone.localize(datetime(year, month, day, hour, 0, 0))
     # remove hours from datetime and set it to 0
     def remove_hours_local(self, dttm, timezone):
-        new_dttm = dttm.astimezone(timezone).replace(
-            hour=0, minute=0, second=0, microsecond=0)
-        return new_dttm
+        local_dttm = dttm.astimezone(timezone)
+        year, month, day = local_dttm.year, local_dttm.month, local_dttm.day
+        return timezone.localize(datetime(year, month, day, 0, 0, 0))
 
     def get_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
         """
@@ -671,7 +673,8 @@ class Reports(TwitterAds):
             # Max is 90 days, set lower to avoid date/hour rounding issues
             date_window_size = 85
         window_start = abs_start
-        window_end = (abs_start + timedelta(days=date_window_size))
+        window_end_date = abs_start.date() + timedelta(days=date_window_size)
+        window_end = timezone.localize(datetime.combine(window_end_date, datetime.min.time()))
         window_start_rounded = None
         window_end_rounded = None
         if window_end > abs_end:
@@ -683,8 +686,8 @@ class Reports(TwitterAds):
             entity_ids = []
             window_start_rounded, window_end_rounded = self.round_times(
                 report_granularity, timezone, window_start, window_end)
-            window_start_str = window_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
-            window_end_str = window_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
+            window_start_str = format_datetime_iso8601(window_start_rounded)
+            window_end_str =  format_datetime_iso8601(window_end_rounded)
 
             LOGGER.info('Report: {} - Date window: {} to {}'.format(
                 report_name, window_start_str, window_end_str))
@@ -940,14 +943,14 @@ class Reports(TwitterAds):
         # Round min_start, max_end to hours or dates
         if report_granularity == 'HOUR': # Round min_start/end to hour
             if start:
-                start_rounded = self.remove_minutes_local(start - timedelta(hours=1), timezone)
+                start_rounded = self.remove_minutes_local(start, timezone)
             if end:
-                end_rounded = self.remove_minutes_local(end + timedelta(hours=1), timezone)
+                end_rounded = self.remove_minutes_local(end, timezone)
         else: # DAY, TOTAL, Round min_start, max_end to date
             if start:
-                start_rounded = self.remove_hours_local(start  - timedelta(days=1), timezone)
+                start_rounded = self.remove_hours_local(start, timezone)
             if end:
-                end_rounded = self.remove_hours_local(end + timedelta(days=1), timezone)
+                end_rounded = self.remove_hours_local(end, timezone)
         return start_rounded, end_rounded
 
 
@@ -1015,10 +1018,10 @@ class Reports(TwitterAds):
                 LOGGER.info('active_entity_dict = {}'.format(active_entity_dict)) # COMMENT OUT
                 entity_id = active_entity_dict.get('entity_id')
                 entity_placements = active_entity_dict.get('placements', [])
-                entity_start = strptime_to_utc(active_entity_dict.get(
-                    'activity_start_time')).astimezone(timezone)
-                entity_end = strptime_to_utc(active_entity_dict.get(
-                    'activity_end_time')).astimezone(timezone)
+                entity_start_dt = strptime_to_utc(active_entity_dict.get('activity_start_time'))
+                entity_start = timezone.localize(datetime.combine(entity_start_dt.date(), datetime.min.time()))
+                entity_end_dt = strptime_to_utc(active_entity_dict.get('activity_end_time'))
+                entity_end = timezone.localize(datetime.combine(entity_end_dt.date(), datetime.min.time()))
 
                 # If active_entity in placement, append; and determine min/max dates
                 if placement in entity_placements:
@@ -1055,8 +1058,8 @@ class Reports(TwitterAds):
                 entity_id_set = {
                     'placement': placement,
                     'entity_ids': entity_ids,
-                    'start_time': min_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z'),
-                    'end_time': max_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
+                    'start_time': format_datetime_iso8601(min_start_rounded),
+                    'end_time': format_datetime_iso8601(max_end_rounded)
                 }
                 LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
                 entity_id_sets.append(entity_id_set)

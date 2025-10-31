@@ -46,7 +46,7 @@ class StartDateTest(TwitterAds):
         # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
         # So, revert back page_size to 200 for the rest of the streams.
         streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2 - expected_stream_3
-        self.run_start_date(streams_to_test, new_start_date="2022-04-06T00:00:00Z")
+        self.run_start_date(streams_to_test, new_start_date="2025-09-15T00:00:00Z")
 
     def run_start_date(self, streams_to_test, new_start_date, page_size = 200):
         """

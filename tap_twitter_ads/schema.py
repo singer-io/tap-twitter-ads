@@ -111,6 +111,14 @@ def get_schemas(reports):
             valid_replication_keys=(hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys,
             replication_method=(hasattr(stream_metadata, 'replication_method') or None) and stream_metadata.replication_method
         )
+        mdata = metadata.to_map(mdata)
+
+        parent_tap_stream_id = getattr(stream_metadata, "parent_stream", None)
+        if parent_tap_stream_id:
+            mdata = metadata.write(mdata, (), 'parent-tap-stream-id', parent_tap_stream_id)
+
+        mdata = metadata.to_list(mdata)
+
         # Make replication keys of automatic inclusion
         mdata = make_replication_key_automatic(mdata, schema, (hasattr(stream_metadata, 'replication_keys') or None) and stream_metadata.replication_keys)
 

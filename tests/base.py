@@ -138,7 +138,8 @@ class TwitterAds(unittest.TestCase):
                 # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
                 self.PRIMARY_KEYS: {"line_item_id", "id"},
                 self.REPLICATION_METHOD: self.INCREMENTAL,
-                self.OBEYS_START_DATE: True
+                self.OBEYS_START_DATE: True,
+                "parent_stream": "line_items"
             },
             "media_creatives": default_metadata,
             "preroll_call_to_actions": default_metadata,
@@ -166,7 +167,12 @@ class TwitterAds(unittest.TestCase):
                 self.REPLICATION_METHOD: self.FULL_TABLE,
                 self.OBEYS_START_DATE: False
             },
-            "targeting_tv_shows": targeting_endpoint_metadata,
+            "targeting_tv_shows": {
+                self.PRIMARY_KEYS: {"targeting_value"},
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                self.OBEYS_START_DATE: False,
+                "parent_stream": "targeting_tv_markets"
+            },
             "tweets": {
                 self.REPLICATION_KEYS: {"created_at"},
                 self.PRIMARY_KEYS: {"id"},
@@ -205,6 +211,12 @@ class TwitterAds(unittest.TestCase):
         return {table: properties.get(self.REPLICATION_METHOD, None)
                 for table, properties
                 in self.expected_metadata().items()}
+
+    def expected_parent_streams(self):
+        """return a dictionary with the key of child stream name and value as the parent stream name"""
+        return {stream: metadata.get('parent_stream') 
+            for stream, metadata in self.expected_metadata().items() 
+            if metadata.get('parent_stream')}
 
 #########################
 #   Helper Methods      #

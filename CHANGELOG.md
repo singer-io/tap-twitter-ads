@@ -18,7 +18,7 @@
   * Added pagination parameter for `targeting devices` [#28](https://github.com/singer-io/tap-twitter-ads/pull/28)
   * Added missing tap-tester test cases [#20](https://github.com/singer-io/tap-twitter-ads/pull/20)
   * Resolved ConnectionResetError [#32](https://github.com/singer-io/tap-twitter-ads/pull/32)
-
+  
 ## 0.0.7
   * Update twitter-ads SDK to v9.0.1 [#13](https://github.com/singer-io/tap-twitter-ads/pull/13)
 

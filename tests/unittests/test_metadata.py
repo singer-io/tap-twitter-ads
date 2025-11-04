@@ -118,7 +118,7 @@ class TestParentTapStreamIdMetadata(unittest.TestCase):
         
         # Test that regular (non-child, non-parent) streams don't have parent_stream attribute
         regular_non_parent_streams = regular_streams - parent_streams
-        for stream_name in list(regular_non_parent_streams)[:3]:  # Test a few regular streams to avoid too many subtests
+        for stream_name in regular_non_parent_streams:
             with self.subTest(stream_name=stream_name, stream_type="regular"):
                 stream_class = STREAMS[stream_name]
                 stream_instance = stream_class()

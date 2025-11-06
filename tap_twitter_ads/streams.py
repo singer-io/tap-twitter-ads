@@ -238,6 +238,17 @@ class TwitterAds:
                 pass
         return selected_fields
 
+    # remove minutes from dattime and set it to 0
+    def remove_minutes_local(self, dttm, tzone):
+        new_dttm = dttm.astimezone(tzone).replace(
+            minute=0, second=0, microsecond=0)
+        return new_dttm
+
+    # remove hours from datetime and set it to 0
+    def remove_hours_local(self, dttm, timezone):
+        new_dttm = dttm.astimezone(timezone).replace(
+            hour=0, minute=0, second=0, microsecond=0)
+        return new_dttm
 
     def get_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
         """
@@ -936,16 +947,16 @@ class Reports(TwitterAds):
             start = timezone.localize(start)
         if end and end.tzinfo is None:
             end = timezone.localize(end)
-        if report_granularity == 'HOUR':
+        if report_granularity == 'HOUR': # Round min_start/end to hour
+                if start:
+                    start_rounded = self.remove_minutes_local(start - timedelta(hours=1), timezone)
+                if end:
+                    end_rounded = self.remove_minutes_local(end + timedelta(hours=1), timezone)
+        else: # DAY, TOTAL, Round min_start, max_end to date
             if start:
-                start_rounded = start.replace(minute=0, second=0, microsecond=0)
+                start_rounded = self.remove_hours_local(start  - timedelta(days=1), timezone)
             if end:
-                end_rounded = end.replace(minute=0, second=0, microsecond=0)
-        else:
-            if start:
-                start_rounded = start.replace(hour=0, minute=0, second=0, microsecond=0)
-            if end:
-                end_rounded = end.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_rounded = self.remove_hours_local((end + timedelta(days=1)), timezone)
         return start_rounded, end_rounded
 
 

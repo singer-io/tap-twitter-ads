@@ -46,6 +46,9 @@ def update_currently_syncing(state, stream_name):
     singer.write_state(state)
     LOGGER.info('Stream: {} - Currently Syncing'.format(stream_name))
 
+def format_datetime_iso8601(dt):
+    return dt.strftime('%Y-%m-%dT%H:%M:%S%z')[:-2] + ':' + dt.strftime('%Y-%m-%dT%H:%M:%S%z')[-2:]
+
 def get_page_size(config, default_page_size):
     """
     This function will get page size from config.
@@ -659,7 +662,7 @@ class Reports(TwitterAds):
         max_bookmark_value = last_datetime
 
         # Get absolute start and end times
-        attribution_window = int(tap_config.get('attribution_window', '14'))
+        attribution_window = int(tap_config.get('attribution_window') or 14)
         abs_start, abs_end = self.get_absolute_start_end_time(
             report_granularity, timezone, last_dttm, attribution_window)
 
@@ -671,7 +674,9 @@ class Reports(TwitterAds):
             # Max is 90 days, set lower to avoid date/hour rounding issues
             date_window_size = 85
         window_start = abs_start
-        window_end = (abs_start + timedelta(days=date_window_size))
+        window_end = abs_start + timedelta(days=date_window_size)
+        window_end = window_end.replace(hour=0, minute=0, second=0, microsecond=0)
+        window_end = timezone.normalize(window_end)
         window_start_rounded = None
         window_end_rounded = None
         if window_end > abs_end:
@@ -683,8 +688,8 @@ class Reports(TwitterAds):
             entity_ids = []
             window_start_rounded, window_end_rounded = self.round_times(
                 report_granularity, timezone, window_start, window_end)
-            window_start_str = window_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
-            window_end_str = window_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
+            window_start_str = format_datetime_iso8601(window_start_rounded)
+            window_end_str =  format_datetime_iso8601(window_end_rounded)
 
             LOGGER.info('Report: {} - Date window: {} to {}'.format(
                 report_name, window_start_str, window_end_str))
@@ -879,6 +884,7 @@ class Reports(TwitterAds):
             # Increment date window
             window_start = window_end
             window_end = window_start + timedelta(days=date_window_size)
+            window_end = timezone.normalize(window_end)
             if window_end > abs_end:
                 window_end = abs_end
             # End: date window
@@ -937,17 +943,20 @@ class Reports(TwitterAds):
     def round_times(self, report_granularity, timezone, start=None, end=None):
         start_rounded = None
         end_rounded = None
-        # Round min_start, max_end to hours or dates
+        if start and start.tzinfo is None:
+            start = timezone.localize(start)
+        if end and end.tzinfo is None:
+            end = timezone.localize(end)
         if report_granularity == 'HOUR': # Round min_start/end to hour
-            if start:
-                start_rounded = self.remove_minutes_local(start - timedelta(hours=1), timezone)
-            if end:
-                end_rounded = self.remove_minutes_local(end + timedelta(hours=1), timezone)
+                if start:
+                    start_rounded = self.remove_minutes_local(start - timedelta(hours=1), timezone)
+                if end:
+                    end_rounded = self.remove_minutes_local(end + timedelta(hours=1), timezone)
         else: # DAY, TOTAL, Round min_start, max_end to date
             if start:
                 start_rounded = self.remove_hours_local(start  - timedelta(days=1), timezone)
             if end:
-                end_rounded = self.remove_hours_local(end + timedelta(days=1), timezone)
+                end_rounded = self.remove_hours_local((end + timedelta(days=1)), timezone)
         return start_rounded, end_rounded
 
 
@@ -955,11 +964,12 @@ class Reports(TwitterAds):
     # abs_start/end and window_start/end must be rounded to nearest hour or day (granularity)
     def get_absolute_start_end_time(self, report_granularity, timezone, last_dttm, attribution_window):
         now_dttm = utils.now().astimezone(timezone)
-        delta_days = (now_dttm - last_dttm).days
-        if delta_days < attribution_window:
+        if (now_dttm - last_dttm).days < attribution_window:
             start = now_dttm - timedelta(days=attribution_window)
         else:
             start = last_dttm
+        start = start.astimezone(timezone)
+        now_dttm = now_dttm.astimezone(timezone)
         abs_start, abs_end = self.round_times(report_granularity, timezone, start, now_dttm)
         return abs_start, abs_end
 
@@ -1015,10 +1025,10 @@ class Reports(TwitterAds):
                 LOGGER.info('active_entity_dict = {}'.format(active_entity_dict)) # COMMENT OUT
                 entity_id = active_entity_dict.get('entity_id')
                 entity_placements = active_entity_dict.get('placements', [])
-                entity_start = strptime_to_utc(active_entity_dict.get(
-                    'activity_start_time')).astimezone(timezone)
-                entity_end = strptime_to_utc(active_entity_dict.get(
-                    'activity_end_time')).astimezone(timezone)
+                entity_start_dt = strptime_to_utc(active_entity_dict.get('activity_start_time'))
+                entity_end_dt = strptime_to_utc(active_entity_dict.get('activity_end_time'))
+                entity_start = entity_start_dt.astimezone(timezone).replace(hour=0, minute=0, second=0, microsecond=0)
+                entity_end = entity_end_dt.astimezone(timezone).replace(hour=0, minute=0, second=0, microsecond=0)
 
                 # If active_entity in placement, append; and determine min/max dates
                 if placement in entity_placements:
@@ -1050,13 +1060,15 @@ class Reports(TwitterAds):
                     max_end_rounded = window_end
             else:
                 max_end_rounded = window_end
-
+            # Re-rounding after comparison
+            min_start_rounded, max_end_rounded = self.round_times(
+                report_granularity, timezone, min_start_rounded, max_end_rounded)
             if entity_ids != []:
                 entity_id_set = {
                     'placement': placement,
                     'entity_ids': entity_ids,
-                    'start_time': min_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z'),
-                    'end_time': max_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
+                    'start_time': format_datetime_iso8601(min_start_rounded),
+                    'end_time': format_datetime_iso8601(max_end_rounded)
                 }
                 LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
                 entity_id_sets.append(entity_id_set)
@@ -1120,7 +1132,12 @@ class Reports(TwitterAds):
                 queued_job_params)
 
             queued_job_data = queued_job.get('data')
-            queued_job_id = queued_job_data.get('id_str')
+            try:
+                queued_job_id = queued_job_data['id_str']
+            except KeyError as err:
+                LOGGER.info('Unable to find id_str looking for id')
+                queued_job_id = queued_job_data['id']
+
             queued_job_ids.append(queued_job_id)
             LOGGER.info('queued_job_ids = {}'.format(queued_job_ids)) # COMMENT OUT
             # End: for chunk_ids in entity_ids
@@ -1160,7 +1177,12 @@ class Reports(TwitterAds):
             jobs_still_running = False
             for async_job_status in async_job_statuses:
                 job_status_dict = self.obj_to_dict(async_job_status)
-                job_id = job_status_dict.get('id_str')
+                try:
+                    job_id = job_status_dict['id_str']
+                except KeyError as err:
+                    LOGGER.info('Unable to find id_str looking for ID')
+                    job_id = job_status_dict['id']
+
                 job_status = job_status_dict.get('status')
                 if job_status == 'PROCESSING':
                     jobs_still_running = True

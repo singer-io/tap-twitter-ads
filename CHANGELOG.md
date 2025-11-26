@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0
+  * Library version upgrades and updated metadata for streams [#46](https://github.com/singer-io/tap-twitter-ads/pull/46)
+
 ## 1.0.0
   * Upgraded SDK and API version [#19](https://github.com/singer-io/tap-twitter-ads/pull/19)
   * Added credentials check in discover mode [#15](https://github.com/singer-io/tap-twitter-ads/pull/15)

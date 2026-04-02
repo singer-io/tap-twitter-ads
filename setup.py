@@ -3,22 +3,22 @@
 from setuptools import setup, find_packages
 
 setup(name='tap-twitter-ads',
-      version='1.1.0',
+      version='1.2.0',
       description='Singer.io tap for extracting data from the Twitter Ads API API',
       author='jeff.huth@bytecode.io',
       classifiers=['Programming Language :: Python :: 3 :: Only'],
       py_modules=['tap_twitter_ads'],
       install_requires=[
           'backoff==2.2.1',
-          'requests==2.32.5',
-          'singer-python==6.3.0',
+          'requests==2.33.0',
+          'singer-python==6.8.0',
           'twitter-ads==11.0.0'
       ],
       extras_require={
           'dev': [
-              'pylint',
-              'ipdb',
-              'nose',
+              'pylint==4.0.4',
+              'ipdb==0.13.13',
+              'nose==1.3.7',
           ]
       },
       entry_points='''

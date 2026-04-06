@@ -36,6 +36,7 @@ jobs:
       - add_ssh_keys
       - run:
           name: 'Integration Tests'
+          no_output_timeout: 60m
           command: |
             source /usr/local/share/virtualenvs/tap-tester/bin/activate
             uv pip install --upgrade awscli

@@ -16,9 +16,9 @@ setup(name='tap-twitter-ads',
       ],
       extras_require={
           'dev': [
-              'pylint==4.0.4',
-              'ipdb==0.13.13',
-              'nose==1.3.7',
+              'pylint',
+              'ipdb',
+              'nose',
           ]
       },
       entry_points='''

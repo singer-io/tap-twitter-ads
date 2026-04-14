@@ -2,6 +2,7 @@
 
 ## 1.2.0
   * Python upgrade to 3.12
+  * Upgraded `requests` to `2.33.0` and `singer-python` to `6.8.0`
 
 ## 1.1.0
   * Library version upgrades and updated metadata for streams [#46](https://github.com/singer-io/tap-twitter-ads/pull/46)

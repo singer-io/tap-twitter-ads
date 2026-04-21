@@ -165,7 +165,7 @@ class TwitterClient(object):
 
 
     @backoff.on_exception(backoff.expo,
-                          Server5xxError,
+                          (Server5xxError, ConnectionError, Server42xRateLimitError),
                           max_tries=5,
                           factor=2)
     def check_access(self):

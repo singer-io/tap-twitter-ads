@@ -6,6 +6,10 @@ LOGGER = get_logger()
 class TwitterAdsClientError(Exception):
     pass
 
+class TwitterAdsBackoffError(TwitterAdsClientError):
+    """Base class for errors that should trigger a backoff/retry."""
+    pass
+
 class TwitterAdsBadRequestError(TwitterAdsClientError):
     pass
 
@@ -21,16 +25,22 @@ class TwitterAdsNotFoundError(TwitterAdsClientError):
 class TwitterAdsMethodNotFoundError(TwitterAdsClientError):
     pass
 
-class TwitterAdsClient429Error(TwitterAdsClientError):
+class TwitterAdsUnprocessableEntityError(TwitterAdsClientError):
+    pass
+
+class TwitterAdsClient429Error(TwitterAdsBackoffError):
     pass
 
 class TwitterAdsRequestCancelledError(TwitterAdsClientError):
     pass
 
-class TwitterAdsInternalServerError(TwitterAdsClientError):
+class TwitterAdsInternalServerError(TwitterAdsBackoffError):
     pass
 
-class TwitterAdsServiceUnavailableError(TwitterAdsClientError):
+class TwitterAdsBadGatewayError(TwitterAdsBackoffError):
+    pass
+
+class TwitterAdsServiceUnavailableError(TwitterAdsBackoffError):
     pass
 
 ERROR_CODE_EXCEPTION_MAPPING = {
@@ -58,6 +68,10 @@ ERROR_CODE_EXCEPTION_MAPPING = {
         "raise_exception": TwitterAdsRequestCancelledError,
         "message": "Request is cancelled."
     },
+    422: {
+        "raise_exception": TwitterAdsUnprocessableEntityError,
+        "message": "The request is well-formed but contains semantic errors."
+    },
     429: {
         "raise_exception": TwitterAdsClient429Error,
         "message": "API rate limit exceeded, please retry after some time."
@@ -65,6 +79,10 @@ ERROR_CODE_EXCEPTION_MAPPING = {
     500: {
         "raise_exception": TwitterAdsInternalServerError,
         "message": "Internal error."
+    },
+    502: {
+        "raise_exception": TwitterAdsBadGatewayError,
+        "message": "Bad gateway."
     },
     503: {
         "raise_exception": TwitterAdsServiceUnavailableError,

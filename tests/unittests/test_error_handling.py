@@ -160,6 +160,28 @@ class TestExceptionHandling(unittest.TestCase):
 
         self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: This message from response 408")
 
+    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(422))
+    def test_422_error_custom_message(self, mocked_cursor, mocked_request):
+        """
+            Test case to verify 422 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
+            self.test_stream.get_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: The request is well-formed but contains semantic errors.")
+
+    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(422, [{"message":"This message from response 422"}]))
+    def test_422_error_response_message(self, mocked_cursor, mocked_request):
+        """
+            Test case to verify 422 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
+            self.test_stream.get_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: This message from response 422")
+
     @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(429))
     def test_429_error_custom_message(self, mocked_cursor, mocked_request):
         """
@@ -203,6 +225,28 @@ class TestExceptionHandling(unittest.TestCase):
             self.test_stream.get_resource("test", self.client_obj, "obj")
 
         self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: This message from response 500")
+
+    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(502))
+    def test_502_error_custom_message(self, mocked_cursor, mocked_request):
+        """
+            Test case to verify 502 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
+            self.test_stream.get_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: Bad gateway.")
+
+    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(502, [{"message":"This message from response 502"}]))
+    def test_502_error_response_message(self, mocked_cursor, mocked_request):
+        """
+            Test case to verify 502 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
+            self.test_stream.get_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: This message from response 502")
 
     @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(503))
     def test_503_error_custom_message(self, mocked_cursor, mocked_request):
@@ -372,6 +416,28 @@ class TestExceptionHandlingForPost(unittest.TestCase):
 
         self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: This message from response 408")
 
+    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(422))
+    def test_422_error_custom_message(self, mocked_request):
+        """
+            Test case to verify 422 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
+            self.test_stream.post_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: The request is well-formed but contains semantic errors.")
+
+    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(422, [{"message":"This message from response 422"}]))
+    def test_422_error_response_message(self, mocked_request):
+        """
+            Test case to verify 422 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
+            self.test_stream.post_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: This message from response 422")
+
     @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(429))
     def test_429_error_custom_message(self, mocked_request):
         """
@@ -415,6 +481,28 @@ class TestExceptionHandlingForPost(unittest.TestCase):
             self.test_stream.post_resource("test", self.client_obj, "obj")
 
         self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: This message from response 500")
+
+    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(502))
+    def test_502_error_custom_message(self, mocked_request):
+        """
+            Test case to verify 502 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
+            self.test_stream.post_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: Bad gateway.")
+
+    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(502, [{"message":"This message from response 502"}]))
+    def test_502_error_response_message(self, mocked_request):
+        """
+            Test case to verify 502 error message from response
+        """
+
+        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
+            self.test_stream.post_resource("test", self.client_obj, "obj")
+
+        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: This message from response 502")
 
     @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(503))
     def test_503_error_custom_message(self, mocked_request):

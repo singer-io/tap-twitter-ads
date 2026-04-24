@@ -30,6 +30,7 @@ from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
 import copy
 from tap_twitter_ads.client import raise_for_error
+from tap_twitter_ads.exceptions import TwitterAdsBackoffError
 
 BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 LOGGER = singer.get_logger()
@@ -66,10 +67,10 @@ def get_page_size(config, default_page_size):
     except Exception:
         raise Exception("The entered page size ({}) is invalid".format(page_size))
 
-# Backoff ConnectionError 5 times.
+# Backoff ConnectionError and TwitterAdsBackoffError (429, 500, 502, 503) up to 5 times.
 def retry_pattern(fnc):
     @backoff.on_exception(backoff.constant,
-                          ConnectionError,
+                          (ConnectionError, TwitterAdsBackoffError),
                           max_tries=5,
                           interval=60,
                           jitter=None
@@ -181,6 +182,7 @@ class TwitterAds:
     # pylint: disable=line-too-long
     # API SDK Requests: https://github.com/twitterdev/twitter-python-ads-sdk/blob/master/examples/manual_request.py
     # pylint: enable=line-too-long
+    @retry_pattern
     def get_resource(self, stream_name, client, path, params=None):
         resource = '/{}/{}'.format(API_VERSION, path)
         
@@ -194,6 +196,7 @@ class TwitterAds:
         return cursor
 
     # method for HTTP post api call
+    @retry_pattern
     def post_resource(self, report_name, client, path, params=None, body=None):
         resource = '/{}/{}'.format(API_VERSION, path)
         try:
@@ -206,6 +209,7 @@ class TwitterAds:
         return response_body
 
     # fetch async data from the gives url
+    @retry_pattern
     def get_async_data(self, report_name, client, url):
         resource = urlparse(url)
         domain = '{0}://{1}'.format(resource.scheme, resource.netloc)

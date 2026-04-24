@@ -165,7 +165,7 @@ class TwitterClient(object):
 
 
     @backoff.on_exception(backoff.expo,
-                          Server5xxError,
+                          (Server5xxError, ConnectionError, Server42xRateLimitError),
                           max_tries=5,
                           factor=2)
     def check_access(self):
@@ -180,7 +180,11 @@ class TwitterClient(object):
             url=url,
             headers=headers,
             auth=self.__auth_header)
-        if response.status_code != 200:
+        if response.status_code in (420, 429):
+            raise Server42xRateLimitError()
+        elif 500 <= response.status_code < 600:
+            raise Server5xxError()
+        elif response.status_code != 200:
             LOGGER.error('Error status_code = {}'.format(response.status_code))
             raise_for_error(response)
         else:
@@ -242,7 +246,7 @@ class TwitterClient(object):
         if response.status_code in (420, 429):
             raise Server42xRateLimitError()
 
-        elif response.status_code >= 500:
+        elif 500 <= response.status_code < 600:
             raise Server5xxError()
 
         elif response.status_code == 400:

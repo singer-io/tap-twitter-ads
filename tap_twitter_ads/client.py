@@ -1,37 +1,23 @@
 
 from singer import get_logger
 
+from tap_twitter_ads.exceptions import (
+    TwitterAdsClientError,
+    TwitterAdsBackoffError,
+    TwitterAdsBadRequestError,
+    TwitterAdsUnauthorizedError,
+    TwitterAdsForbiddenError,
+    TwitterAdsNotFoundError,
+    TwitterAdsMethodNotFoundError,
+    TwitterAdsUnprocessableEntityError,
+    TwitterAdsClient429Error,
+    TwitterAdsRequestCancelledError,
+    TwitterAdsInternalServerError,
+    TwitterAdsBadGatewayError,
+    TwitterAdsServiceUnavailableError,
+)
+
 LOGGER = get_logger()
-
-class TwitterAdsClientError(Exception):
-    pass
-
-class TwitterAdsBadRequestError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsUnauthorizedError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsForbiddenError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsMethodNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsClient429Error(TwitterAdsClientError):
-    pass
-
-class TwitterAdsRequestCancelledError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsInternalServerError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsServiceUnavailableError(TwitterAdsClientError):
-    pass
 
 ERROR_CODE_EXCEPTION_MAPPING = {
     400: {
@@ -58,6 +44,10 @@ ERROR_CODE_EXCEPTION_MAPPING = {
         "raise_exception": TwitterAdsRequestCancelledError,
         "message": "Request is cancelled."
     },
+    422: {
+        "raise_exception": TwitterAdsUnprocessableEntityError,
+        "message": "The request is well-formed but contains semantic errors."
+    },
     429: {
         "raise_exception": TwitterAdsClient429Error,
         "message": "API rate limit exceeded, please retry after some time."
@@ -65,6 +55,10 @@ ERROR_CODE_EXCEPTION_MAPPING = {
     500: {
         "raise_exception": TwitterAdsInternalServerError,
         "message": "Internal error."
+    },
+    502: {
+        "raise_exception": TwitterAdsBadGatewayError,
+        "message": "Bad gateway."
     },
     503: {
         "raise_exception": TwitterAdsServiceUnavailableError,

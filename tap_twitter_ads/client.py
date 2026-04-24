@@ -1,47 +1,23 @@
 
 from singer import get_logger
 
+from tap_twitter_ads.exceptions import (
+    TwitterAdsClientError,
+    TwitterAdsBackoffError,
+    TwitterAdsBadRequestError,
+    TwitterAdsUnauthorizedError,
+    TwitterAdsForbiddenError,
+    TwitterAdsNotFoundError,
+    TwitterAdsMethodNotFoundError,
+    TwitterAdsUnprocessableEntityError,
+    TwitterAdsClient429Error,
+    TwitterAdsRequestCancelledError,
+    TwitterAdsInternalServerError,
+    TwitterAdsBadGatewayError,
+    TwitterAdsServiceUnavailableError,
+)
+
 LOGGER = get_logger()
-
-class TwitterAdsClientError(Exception):
-    pass
-
-class TwitterAdsBackoffError(TwitterAdsClientError):
-    """Base class for errors that should trigger a backoff/retry."""
-    pass
-
-class TwitterAdsBadRequestError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsUnauthorizedError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsForbiddenError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsMethodNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsUnprocessableEntityError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsClient429Error(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsRequestCancelledError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsInternalServerError(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsBadGatewayError(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsServiceUnavailableError(TwitterAdsBackoffError):
-    pass
 
 ERROR_CODE_EXCEPTION_MAPPING = {
     400: {

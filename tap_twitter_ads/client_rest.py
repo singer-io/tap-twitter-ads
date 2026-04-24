@@ -182,7 +182,7 @@ class TwitterClient(object):
             auth=self.__auth_header)
         if response.status_code in (420, 429):
             raise Server42xRateLimitError()
-        elif response.status_code >= 500:
+        elif 500 <= response.status_code < 600:
             raise Server5xxError()
         elif response.status_code != 200:
             LOGGER.error('Error status_code = {}'.format(response.status_code))
@@ -246,7 +246,7 @@ class TwitterClient(object):
         if response.status_code in (420, 429):
             raise Server42xRateLimitError()
 
-        elif response.status_code >= 500:
+        elif 500 <= response.status_code < 600:
             raise Server5xxError()
 
         elif response.status_code == 400:

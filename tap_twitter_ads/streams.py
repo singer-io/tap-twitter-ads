@@ -29,7 +29,8 @@ from singer.utils import strptime_to_utc
 from datetime import datetime, timedelta
 from tap_twitter_ads.transform import transform_record, transform_report
 import copy
-from tap_twitter_ads.client import raise_for_error, TwitterAdsBackoffError
+from tap_twitter_ads.client import raise_for_error
+from tap_twitter_ads.exceptions import TwitterAdsBackoffError
 
 BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 LOGGER = singer.get_logger()

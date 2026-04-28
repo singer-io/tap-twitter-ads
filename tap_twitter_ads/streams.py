@@ -362,7 +362,7 @@ class TwitterAds:
                 new_val = val
                 if isinstance(val, str):
                     if key == 'with_deleted':
-                        new_val = val.replace('{with_deleted}', with_deleted)
+                        new_val = val.replace('{with_deleted}', str(with_deleted).lower())
                     if '{account_ids}' in val:
                         new_val = val.replace('{account_ids}', account_id)
                     if '{parent_ids}' in val:

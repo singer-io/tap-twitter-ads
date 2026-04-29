@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.2.1
+  * Improved error handling and retry logic [#48](https://github.com/singer-io/tap-twitter-ads/pull/48)
+
 ## 1.2.0
   * Python upgrade to 3.12
   * Upgraded `requests` to `2.33.0` and `singer-python` to `6.8.0`

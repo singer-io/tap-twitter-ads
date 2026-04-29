@@ -1,6 +1,6 @@
 import unittest
 import tap_twitter_ads
-import tap_twitter_ads.client as client
+import tap_twitter_ads.exceptions as client
 from unittest import mock
 from twitter_ads.client import Client
 # from tap_twitter_ads.sync import get_resource, post_resource
@@ -27,6 +27,11 @@ class TestExceptionHandling(unittest.TestCase):
     )
     
     test_stream = TwitterAds()
+
+    def setUp(self):
+        patcher = mock.patch('time.sleep')
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(400))
     def test_400_error_custom_message(self, mocked_cursor, mocked_request):
@@ -283,6 +288,11 @@ class TestExceptionHandlingForPost(unittest.TestCase):
     )
     
     test_stream = TwitterAds()
+
+    def setUp(self):
+        patcher = mock.patch('time.sleep')
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(400))
     def test_400_error_post_custom_message(self, mocked_request):

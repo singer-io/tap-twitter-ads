@@ -1,7 +1,7 @@
+
 from singer import get_logger
 
 LOGGER = get_logger()
-
 
 class TwitterAdsClientError(Exception):
     pass
@@ -94,7 +94,7 @@ ERROR_CODE_EXCEPTION_MAPPING = {
 
 # get exception class based on status code
 def get_exception_for_status_code(status_code):
-    # if status code is not in above ERROR_CODE_EXCEPTION_MAPPING then
+    # if status code is not in above ERROR_CODE_EXCEPTION_MAPPING then 
     # return defult class TwitterAdsClinetError
     return ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("raise_exception", TwitterAdsClientError)
 
@@ -103,8 +103,8 @@ def raise_for_error(exception):
     status_code = exception.code
 
     if exception.details:
-        error_message = exception.details[0].get("message", ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error"))
-    else:
+        error_message = exception.details[0].get("message", ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error"))  
+    else: 
         error_message = ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error")
 
     # get twitter-ads error code, message and prepare message

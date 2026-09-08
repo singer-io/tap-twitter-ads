@@ -30,10 +30,10 @@ class TwitterAds(unittest.TestCase):
 
     def get_credentials(self):
         return {
-            'consumer_key': os.getenv('TAP_TWITTER_ADS_CONSUMER_KEY'),
-            'consumer_secret': os.getenv('TAP_TWITTER_ADS_CONSUMER_SECRET'),
+            'client_id': os.getenv('TAP_TWITTER_ADS_CLIENT_ID'),
+            'client_secret': os.getenv('TAP_TWITTER_ADS_CLIENT_SECRET'),
             'access_token': os.getenv('TAP_TWITTER_ADS_ACCESS_TOKEN'),
-            'access_token_secret': os.getenv('TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET')
+            'refresh_token': os.getenv('TAP_TWITTER_ADS_REFRESH_TOKEN')
         }
 
     def get_properties(self, original: bool = True):
@@ -71,10 +71,10 @@ class TwitterAds(unittest.TestCase):
 
     def setUp(self):
         required_env = {
-            "TAP_TWITTER_ADS_CONSUMER_KEY",
-            "TAP_TWITTER_ADS_CONSUMER_SECRET",
+            "TAP_TWITTER_ADS_CLIENT_ID",
+            "TAP_TWITTER_ADS_CLIENT_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
-            "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
+            "TAP_TWITTER_ADS_REFRESH_TOKEN",
             "TAP_TWITTER_ADS_ACCOUNT_IDS",
             "TAP_TWITTER_ADS_ATTRIBUTION_WINDOW",
             "TAP_TWITTER_ADS_WITH_DELETED",

@@ -31,10 +31,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on config value
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': 100}
         # mock parse args
@@ -51,10 +51,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based default value
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids'}
         # mock parse args
         mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
@@ -70,10 +70,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on config if string value is given in config
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': '100'}
         # mock parse args
@@ -90,10 +90,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on default value if empty value is given in config
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': ''}
         # mock parse args
@@ -110,10 +110,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on default value if 0 is given in config
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': 0}
         # mock parse args
@@ -130,10 +130,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on default value if string 0  is given in config
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': "0"}
         # mock parse args
@@ -150,10 +150,10 @@ class TestTimeoutValue(unittest.TestCase):
             Unit tests to ensure that request timeout is set based on config float value
         """
         mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
+                  'client_id': 'test_ck',
+                  'client_secret': 'test_ck',
                   'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
+                  'refresh_token': 'test_ts',
                   'account_ids': 'test_acc_ids',
                   'request_timeout': 100.8}
         # mock parse args

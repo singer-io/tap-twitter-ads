@@ -71,8 +71,9 @@ This tap:
 
 
 ## Authentication
-Twitter Ads requires authentication headers using OAuth 1.0a with an access token obtained via 3-legged OAuth flow. The access token, once generated, is permanent, but request tokens are short-lived without a documented expiry.
-The process is described in [Obtaining Ads Account Credential](https://developer.twitter.com/en/docs/ads/general/guides/obtaining-ads-account-access).
+X (Twitter) Ads API requests are authenticated using OAuth 2.0 with a Bearer `access_token` (`Authorization: Bearer <access_token>`), obtained via the [Authorization Code Flow with PKCE](https://developer.x.com/en/docs/authentication/oauth-2-0/user-access-token). Access tokens expire; the tap automatically refreshes an expired `access_token` using the stored `refresh_token` via `POST https://api.x.com/2/oauth2/token`, and persists the rotated `access_token`/`refresh_token` pair back to `config.json` (X rotates the `refresh_token` on every use).
+
+**Migration note (breaking change):** Existing connections configured with OAuth 1.0a credentials (`consumer_key`, `consumer_secret`, `access_token`, `access_token_secret`) must be reconfigured with OAuth 2.0 credentials (`client_id`, `client_secret`, `access_token`, `refresh_token`) obtained via the OAuth 2.0/PKCE flow described above. There is no automatic conversion between OAuth 1.0a and OAuth 2.0 tokens; existing connections will need to re-authorize before upgrading to this version.
 
 ## Quick Start
 
@@ -103,11 +104,11 @@ The process is described in [Obtaining Ads Account Credential](https://developer
 3. Create your tap's `config.json` with the following parameters:
     - `start_date`: Absolute beginning date for bookmarked endpoints.
     - `user_agent`: Tap name and email address for API logging.
-    - OAuth 1.0a credentials:
-      - `consumer_key`
-      - `consumer_secret`
-      - `access_token`
-      - `access_token_secret`
+    - OAuth 2.0 credentials (Bearer token authentication):
+      - `client_id`: OAuth 2.0 App Client ID, used to refresh the access_token.
+      - `client_secret`: OAuth 2.0 App Client Secret, used to refresh the access_token.
+      - `access_token`: OAuth 2.0 user access_token, sent as `Authorization: Bearer <access_token>`.
+      - `refresh_token`: OAuth 2.0 refresh_token, used to obtain a new access_token/refresh_token pair when the access_token expires. X rotates the refresh_token on every use, so the tap persists the newly rotated tokens back to `config.json`.
     - `account_ids`: Comma-delimited list of Twitter Ad Account IDs.
     - `attribution_window`: Number of days for latency look-back period to allow analytical reporting numbers to stabilize.
     - `with_deleted`: true or false; specifies whether to include logically deleted records in the results.
@@ -120,10 +121,10 @@ The process is described in [Obtaining Ads Account Credential](https://developer
     {
         "start_date": "2019-01-01T00:00:00Z",
         "user_agent": "tap-twitter-ads <api_user_email@your_company.com>",
-        "consumer_key": "YOUR_TWITTER_ADS_CONSUMER_KEY",
-        "consumer_secret": "YOUR_TWITTER_ADS_CONSUMER_SECRET",
-        "access_token": "YOUR_TWITTER_ADS_ACCESS_TOKEN",
-        "access_token_secret": "YOUR_TWITTER_ADS_ACCESS_TOKEN_SECRET",
+        "client_id": "YOUR_TWITTER_ADS_OAUTH2_CLIENT_ID",
+        "client_secret": "YOUR_TWITTER_ADS_OAUTH2_CLIENT_SECRET",
+        "access_token": "YOUR_TWITTER_ADS_OAUTH2_ACCESS_TOKEN",
+        "refresh_token": "YOUR_TWITTER_ADS_OAUTH2_REFRESH_TOKEN",
         "account_ids": "id1, id2, id3",
         "attribution_window": "14",
         "with_deleted": "true",

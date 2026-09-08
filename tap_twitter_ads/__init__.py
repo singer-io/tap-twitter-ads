@@ -6,6 +6,7 @@ import argparse
 from twitter_ads.client import Client
 import singer
 from singer import metadata, utils
+from tap_twitter_ads.client_rest import patch_twitter_ads_sdk_auth
 from tap_twitter_ads.discover import discover
 from tap_twitter_ads.sync import sync as _sync
 from tap_twitter_ads.streams import TwitterAds
@@ -14,12 +15,14 @@ from tap_twitter_ads.streams import TwitterAds
 LOGGER = singer.get_logger()
 REQUEST_TIMEOUT = 300 # 5 minutes default timeout
 
+# OAuth 2.0 credentials (X Ads API). account_ids is still required because it
+# scopes which Ad Accounts to sync; it is unrelated to authentication.
 REQUIRED_CONFIG_KEYS = [
     'start_date',
-    'consumer_key',
-    'consumer_secret',
+    'client_id',
+    'client_secret',
     'access_token',
-    'access_token_secret',
+    'refresh_token',
     'account_ids'
 ]
 
@@ -56,6 +59,7 @@ def main():
     parsed_args = singer.utils.parse_args(REQUIRED_CONFIG_KEYS)
 
     config = parsed_args.config
+    config_path = getattr(parsed_args, 'config_path', None)
     request_timeout = config.get('request_timeout')
     # if request_timeout is other than 0, "0" or "" then use request_timeout
     if request_timeout and float(request_timeout):
@@ -63,13 +67,24 @@ def main():
     else: # If value is 0, "0" or "" then set the default which is 300 seconds.
         request_timeout = REQUEST_TIMEOUT
 
+    # X Ads API authenticates with OAuth 2.0 Bearer tokens, but the vendored
+    # twitter-ads SDK only implements OAuth 1.0a request signing. Patch it to
+    # sign requests with the configured access_token and to auto-refresh via
+    # refresh_token on 401 responses (see client_rest.patch_twitter_ads_sdk_auth).
+    patch_twitter_ads_sdk_auth(config, config_path)
+
     # Twitter Ads SDK Reference: https://github.com/twitterdev/twitter-python-ads-sdk
     # Client reference: https://github.com/twitterdev/twitter-python-ads-sdk#rate-limit-handling-and-request-options
     client = Client(
-        consumer_key=config.get('consumer_key'),
-        consumer_secret=config.get('consumer_secret'),
+        # twitter-ads SDK has no OAuth 2.0 fields; reuse its OAuth 1.0a
+        # attribute slots to carry OAuth 2.0 credentials instead:
+        #   consumer_key/consumer_secret -> client_id/client_secret (refresh creds)
+        #   access_token                -> OAuth 2.0 Bearer access_token
+        #   access_token_secret         -> OAuth 2.0 refresh_token
+        consumer_key=config.get('client_id'),
+        consumer_secret=config.get('client_secret'),
         access_token=config.get('access_token'),
-        access_token_secret=config.get('access_token_secret'),
+        access_token_secret=config.get('refresh_token'),
         options={
             'handle_rate_limit': True, # Handles 429 errors
             'retry_max': 10,

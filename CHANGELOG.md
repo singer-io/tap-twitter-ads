@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.0
+  * **Breaking change:** Replaced OAuth 1.0a authentication (`consumer_key`, `consumer_secret`, `access_token`, `access_token_secret`) with OAuth 2.0 Bearer token authentication (`client_id`, `client_secret`, `access_token`, `refresh_token`). Existing connections must be re-authorized via the OAuth 2.0/PKCE flow; see README Authentication/Migration notes. [#50](https://github.com/singer-io/tap-twitter-ads/pull/50)
+  * Requests to the X Ads API are now signed with `Authorization: Bearer <access_token>` instead of OAuth 1.0a request signing.
+  * Added automatic access_token refresh via `POST https://api.x.com/2/oauth2/token` using the stored `refresh_token`, with rotated tokens persisted back to the config.
+  * `account_ids` remains a required config field; it scopes which Ad Accounts to sync and is unrelated to authentication.
+
 ## 1.2.1
   * Improved error handling and retry logic [#48](https://github.com/singer-io/tap-twitter-ads/pull/48)
 

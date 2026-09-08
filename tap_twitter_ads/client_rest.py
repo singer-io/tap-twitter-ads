@@ -4,8 +4,8 @@ import json
 import zlib
 import backoff
 import requests
-from requests.exceptions import ConnectionError
-from requests_oauthlib import OAuth1
+from requests.auth import HTTPBasicAuth
+from requests.exceptions import ConnectionError, Timeout
 
 from singer import metrics
 import singer
@@ -14,6 +14,10 @@ LOGGER = singer.get_logger()
 
 ADS_API_VERSION = '11'
 ADS_API_URL = 'https://ads-api.twitter.com'
+# X (Twitter) OAuth 2.0 token endpoint, used to exchange a refresh_token for a
+# new access_token/refresh_token pair.
+# Reference: https://developer.x.com/en/docs/authentication/oauth-2-0/user-access-token
+OAUTH2_TOKEN_URL = 'https://api.x.com/2/oauth2/token'
 DEFAULT_CONNECTION_TIMEOUT = 5
 DEFAULT_REST_TIMEOUT = 5
 
@@ -68,6 +72,10 @@ class TwitterForbiddenError(TwitterError):
 
 
 class TwitterInternalServiceError(TwitterError):
+    pass
+
+
+class TwitterOauth2Error(TwitterError):
     pass
 
 
@@ -127,34 +135,80 @@ def raise_for_error(response):
             raise TwitterError(err2)
 
 
+def refresh_access_token(client_id, client_secret, refresh_token):
+    """
+    Exchange a refresh_token for a new (access_token, refresh_token) pair.
+    X rotates refresh tokens on every use, so the caller must persist both
+    returned values, not just the access_token.
+    """
+    LOGGER.info('Refreshing OAuth 2.0 access token')
+    response = requests.post(
+        OAUTH2_TOKEN_URL,
+        data={
+            'grant_type': 'refresh_token',
+            'refresh_token': refresh_token,
+            'client_id': client_id
+        },
+        auth=HTTPBasicAuth(client_id, client_secret),
+        timeout=(DEFAULT_CONNECTION_TIMEOUT, DEFAULT_REST_TIMEOUT))
+
+    if response.status_code != 200:
+        raise TwitterOauth2Error(
+            'Failed to refresh OAuth 2.0 access token: {} {}'.format(
+                response.status_code, response.text))
+
+    token_response = response.json()
+    new_access_token = token_response.get('access_token')
+    new_refresh_token = token_response.get('refresh_token', refresh_token)
+
+    if not new_access_token:
+        raise TwitterOauth2Error('Refresh token response did not contain an access_token')
+
+    LOGGER.info('OAuth 2.0 access token refreshed successfully')
+    return new_access_token, new_refresh_token
+
+
+def persist_refreshed_tokens(config, config_path, access_token, refresh_token):
+    """Persist rotated access_token/refresh_token back to the config dict and file (if available)."""
+    if config is not None:
+        config['access_token'] = access_token
+        config['refresh_token'] = refresh_token
+
+    if not config_path:
+        return
+
+    try:
+        with open(config_path, 'w', encoding='utf-8') as config_file:
+            json.dump(config, config_file, indent=2)
+    except OSError as err:
+        LOGGER.warning('Unable to persist refreshed OAuth 2.0 tokens to config file: {}'.format(err))
+
+
 class TwitterClient(object):
     def __init__(self,
-                 consumer_key,
-                 consumer_secret,
+                 client_id,
+                 client_secret,
                  access_token,
-                 access_token_secret,
+                 refresh_token,
+                 config=None,
+                 config_path=None,
                  user_agent=None):
-        self.__consumer_key = consumer_key
-        self.__consumer_secret = consumer_secret
+        self.__client_id = client_id
+        self.__client_secret = client_secret
         self.__access_token = access_token
-        self.__access_token_secret = access_token_secret
+        self.__refresh_token = refresh_token
+        self.__config = config
+        self.__config_path = config_path
         self.__user_agent = user_agent
         self.__verified = False
         self.__session = requests.Session()
         self.base_url = '{}/{}'.format(ADS_API_URL, ADS_API_VERSION)
 
-        if not all([self.__consumer_key,
-                    self.__consumer_secret,
+        if not all([self.__client_id,
+                    self.__client_secret,
                     self.__access_token,
-                    self.__access_token_secret]):
+                    self.__refresh_token]):
             raise Exception('Missing authentication parameter')
-
-        self.__auth_header = OAuth1(
-            client_key=self.__consumer_key,
-            client_secret=self.__consumer_secret,
-            resource_owner_key=self.__access_token,
-            resource_owner_secret=self.__access_token_secret,
-            signature_type='auth_header')
 
     def __enter__(self):
         self.__verified = self.check_access()
@@ -163,23 +217,34 @@ class TwitterClient(object):
     def __exit__(self, exception_type, exception_value, traceback):
         self.__session.close()
 
+    def __auth_header(self):
+        return {'Authorization': 'Bearer {}'.format(self.__access_token)}
+
+    def __refresh(self):
+        new_access_token, new_refresh_token = refresh_access_token(
+            self.__client_id, self.__client_secret, self.__refresh_token)
+        self.__access_token = new_access_token
+        self.__refresh_token = new_refresh_token
+        persist_refreshed_tokens(self.__config, self.__config_path, new_access_token, new_refresh_token)
 
     @backoff.on_exception(backoff.expo,
                           (Server5xxError, ConnectionError, Server42xRateLimitError),
                           max_tries=5,
                           factor=2)
     def check_access(self):
-        headers = {}
         # Endpoint: simple API call to return a single record (org settings) to test access
         url = '{}/accounts&count=1'.format(self.base_url)
+        headers = self.__auth_header()
         if self.__user_agent:
             headers['User-Agent'] = self.__user_agent
         headers['Accept'] = 'application/json'
 
-        response = self.__session.get(
-            url=url,
-            headers=headers,
-            auth=self.__auth_header)
+        response = self.__session.get(url=url, headers=headers)
+        if response.status_code == 401:
+            self.__refresh()
+            headers.update(self.__auth_header())
+            response = self.__session.get(url=url, headers=headers)
+
         if response.status_code in (420, 429):
             raise Server42xRateLimitError()
         elif 500 <= response.status_code < 600:
@@ -217,16 +282,31 @@ class TwitterClient(object):
         if method == 'POST':
             kwargs['headers']['Content-Type'] = 'application/json'
 
+        kwargs['headers'].update(self.__auth_header())
+
         with metrics.http_request_timer(endpoint) as timer:
             response = self.__session.request(
                 method,
                 url,
-                auth=self.__auth_header,
                 data=data,
                 params=params,
                 timeout=(DEFAULT_CONNECTION_TIMEOUT, DEFAULT_REST_TIMEOUT),
                 **kwargs)
             timer.tags[metrics.Tag.http_status_code] = response.status_code
+
+        # Expired access_token: refresh and retry once
+        if response.status_code == 401:
+            self.__refresh()
+            kwargs['headers'].update(self.__auth_header())
+            with metrics.http_request_timer(endpoint) as timer:
+                response = self.__session.request(
+                    method,
+                    url,
+                    data=data,
+                    params=params,
+                    timeout=(DEFAULT_CONNECTION_TIMEOUT, DEFAULT_REST_TIMEOUT),
+                    **kwargs)
+                timer.tags[metrics.Tag.http_status_code] = response.status_code
 
         # Rate Limit reference: https://developer.twitter.com/en/docs/basics/rate-limiting
         # LOGGER.info('headers = {}'.format(response.headers))
@@ -286,3 +366,109 @@ class TwitterClient(object):
         extracted = zlib.decompress(blob, 16+zlib.MAX_WBITS)
         decoded = extracted.decode('utf-8')
         return json.loads(decoded)
+
+
+def patch_twitter_ads_sdk_auth(config, config_path=None):
+    """
+    The vendored `twitter-ads` SDK (twitter_ads.http.Request) only knows how
+    to sign requests with OAuth 1.0a (requests_oauthlib.OAuth1Session). X Ads
+    API now also accepts OAuth 2.0 Bearer tokens, so this monkey-patches the
+    SDK's private request method to authenticate with
+    `Authorization: Bearer <access_token>` instead, and to transparently
+    refresh + persist a new access_token/refresh_token pair on a 401 response.
+
+    NOTE: Since `twitter_ads.client.Client` has no OAuth 2.0 fields, the tap
+    constructs it re-using its OAuth 1.0a attribute slots to carry OAuth 2.0
+    credentials instead:
+        consumer_key/consumer_secret -> client_id/client_secret (refresh creds)
+        access_token                -> OAuth 2.0 Bearer access_token
+        access_token_secret         -> OAuth 2.0 refresh_token
+    """
+    # Imported lazily so this module has no hard dependency on twitter-ads.
+    from twitter_ads.http import Request, Response  # pylint: disable=import-outside-toplevel
+
+    def _oauth2_bearer_request(self):
+        client = self.client
+        headers = {'user-agent': self._Request__user_agent()}
+        if 'headers' in self.options:
+            headers.update(self.options['headers'].copy())
+        if 'x-as-user' in client.options:
+            headers['x-as-user'] = client.options.get('x-as-user')
+        for key, val in client.headers.items():
+            headers[key] = val
+
+        params = self.options.get('params', None)
+        data = self.options.get('body', None)
+        files = self.options.get('files', None)
+        stream = self.options.get('stream', False)
+
+        handle_rate_limit = client.options.get('handle_rate_limit', False)
+        retry_max = client.options.get('retry_max', 0)
+        retry_delay = client.options.get('retry_delay', 1500)
+        retry_on_status = client.options.get('retry_on_status', [500, 503])
+        retry_on_timeouts = client.options.get('retry_on_timeouts', False)
+        timeout = client.options.get('timeout', None)
+
+        session = requests.Session()
+        method = getattr(session, self._method)
+        url = self._Request__domain() + self._resource
+
+        retry_count = 0
+        retry_after = None
+        refreshed = False
+        response = None
+        while retry_count <= retry_max:
+            headers['Authorization'] = 'Bearer {}'.format(client.access_token)
+            try:
+                response = method(url, headers=headers, data=data, params=params,
+                                   files=files, stream=stream, timeout=timeout)
+            except Timeout as e:
+                if retry_on_timeouts:
+                    if retry_count == retry_max:
+                        raise Exception(e)
+                    LOGGER.warning('Timeout occurred: resume in %s seconds',
+                                   int(retry_delay) / 1000)
+                    time.sleep(int(retry_delay) / 1000)
+                    retry_count += 1
+                    continue
+                raise Exception(e)
+
+            # do not retry on 2XX status code
+            if 200 <= response.status_code < 300:
+                break
+
+            # Expired access_token: refresh once via refresh_token and retry immediately
+            if response.status_code == 401 and not refreshed:
+                LOGGER.warning('Received 401 from X Ads API, refreshing OAuth 2.0 access token')
+                new_access_token, new_refresh_token = refresh_access_token(
+                    client.consumer_key, client.consumer_secret, client.access_token_secret)
+                # pylint: disable=protected-access
+                client._access_token = new_access_token
+                client._access_token_secret = new_refresh_token
+                persist_refreshed_tokens(config, config_path, new_access_token, new_refresh_token)
+                refreshed = True
+                continue
+
+            if handle_rate_limit and retry_after is None:
+                rate_limit_reset = response.headers.get('x-account-rate-limit-reset') \
+                    or response.headers.get('x-rate-limit-reset')
+
+                if response.status_code == 429:
+                    retry_after = int(rate_limit_reset) - int(time.time())
+                    LOGGER.warning('Request reached Rate Limit: resume in %d seconds', retry_after)
+                    time.sleep(retry_after + 5)
+                    continue
+
+            if retry_max > 0:
+                if response.status_code not in retry_on_status:
+                    break
+                time.sleep(int(retry_delay) / 1000)
+
+            retry_count += 1
+
+        raw_response_body = response.raw.read() if stream else response.text
+        return Response(response.status_code, response.headers,
+                        body=response.raw, raw_body=raw_response_body)
+
+    # pylint: disable=protected-access
+    Request._Request__oauth_request = _oauth2_bearer_request

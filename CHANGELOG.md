@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.0.0
+  * BREAKING: Migrated the tap from the legacy OAuth 1.0a Twitter/X Ads API (`ads-api.x.com`) to the X API v2 (`api.x.com/2`) using OAuth 2.0 exclusively [#51](https://github.com/singer-io/tap-twitter-ads/pull/51)
+  * Removed all OAuth 1.0a Ads API streams, schemas, and the `twitter-ads` SDK dependency
+  * Implemented 56 new OAuth 2.0 streams as a class hierarchy (one dedicated schema file and concrete class per stream)
+  * Added OAuth 2.0 access/refresh token rotation and persistence, plus a `check_credentials` pre-sync validation step
+  * Added per-stream error isolation so a single stream's failure no longer discards data already synced by other streams
+  * Restored and adapted the unit and tap-tester integration test suites for the new OAuth 2.0 architecture
+
 ## 1.2.1
   * Improved error handling and retry logic [#48](https://github.com/singer-io/tap-twitter-ads/pull/48)
 

@@ -1,0 +1,17 @@
+{
+  "type": ["null", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "start": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "end": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    },
+    "post_count": {
+      "type": ["null", "integer"]
+    }
+  }
+}

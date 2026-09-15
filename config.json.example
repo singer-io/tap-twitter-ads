@@ -1,27 +1,28 @@
 {
   "start_date": "2019-01-01T00:00:00Z",
-  "user_agent": "tap-twitter-ads <api_user_email@your_company.com>",
-  "consumer_key": "YOUR_TWITTER_ADS_CONSUMER_KEY",
-  "consumer_secret": "YOUR_TWITTER_ADS_CONSUMER_SECRET",
-  "access_token": "YOUR_TWITTER_ADS_ACCESS_TOKEN",
-  "access_token_secret": "YOUR_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-  "account_ids": "id1, id2, id3",
-  "attribution_window": "14",
-  "with_deleted": "true",
-  "country_codes": "US, CA, MX, DE",
-  "reports": [
-    {
-      "name": "campaigns_genders_hourly_report",
-      "entity": "CAMPAIGN",
-      "segment": "GENDER",
-      "granularity": "HOUR"
-    },
-    {
-      "name": "line_items_regions_daily_report",
-      "entity": "LINE_ITEM",
-      "segment": "REGIONS",
-      "granularity": "DAY"
-    }
-  ],
+  "client_id": "YOUR_X_OAUTH2_CLIENT_ID",
+  "client_secret": "YOUR_X_OAUTH2_CLIENT_SECRET",
+  "access_token": "YOUR_X_OAUTH2_ACCESS_TOKEN",
+  "refresh_token": "YOUR_X_OAUTH2_REFRESH_TOKEN",
+  "bearer_token": "OPTIONAL_APP_ONLY_BEARER_TOKEN_FOR_compliance_jobs_usage_tweets_bots_post_counts_all",
+  "user_ids": "id1,id2",
+  "usernames": "XDevelopers,jack",
+  "tweet_ids": "id1,id2",
+  "space_ids": "id1,id2",
+  "creator_ids": "id1,id2",
+  "list_ids": "id1,id2",
+  "media_keys": "key1,key2",
+  "broadcast_ids": "id1,id2",
+  "scheduled_broadcast_ids": "id1,id2",
+  "community_ids": "id1,id2",
+  "news_ids": "id1,id2",
+  "woeids": "1,2459115",
+  "compliance_job_type": "tweets",
+  "users_search_query": "from:XDevelopers",
+  "post_search_query": "#opensource lang:en",
+  "communities_search_query": "developers",
+  "news_search_query": "technology",
+  "community_notes_test_mode": false,
+  "page_size": 100,
   "request_timeout": 300
 }

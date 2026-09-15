@@ -1,0 +1,15 @@
+{
+  "type": ["null", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "total_balance": {
+      "type": ["null", "number"]
+    },
+    "free_balance": {
+      "type": ["null", "number"]
+    },
+    "prepaid_balance": {
+      "type": ["null", "number"]
+    }
+  }
+}

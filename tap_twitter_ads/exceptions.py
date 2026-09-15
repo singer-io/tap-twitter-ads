@@ -1,116 +1,80 @@
-
+"""
+X API v2 (OAuth 2.0, api.x.com/2) exceptions - used by client.py.
+"""
 from singer import get_logger
 
 LOGGER = get_logger()
 
-class TwitterAdsClientError(Exception):
-    pass
 
-class TwitterAdsBackoffError(Exception):
-    """Base class for errors that should trigger a backoff/retry."""
-    pass
-
-class TwitterAdsBadRequestError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsUnauthorizedError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsForbiddenError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsMethodNotFoundError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsUnprocessableEntityError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsClient429Error(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsRequestCancelledError(TwitterAdsClientError):
-    pass
-
-class TwitterAdsInternalServerError(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsBadGatewayError(TwitterAdsBackoffError):
-    pass
-
-class TwitterAdsServiceUnavailableError(TwitterAdsBackoffError):
+class XApiClientError(Exception):
+    """Base class for all non-retriable X API v2 errors (4xx except 429)."""
     pass
 
 
-ERROR_CODE_EXCEPTION_MAPPING = {
-    400: {
-        "raise_exception": TwitterAdsBadRequestError,
-        "message": "The request is missing or has a bad parameter."
-    },
-    401: {
-        "raise_exception": TwitterAdsUnauthorizedError,
-        "message": "Unauthorized access for the URL."
-    },
-    403: {
-        "raise_exception": TwitterAdsForbiddenError,
-        "message": "User does not have permission to access the resource."
-    },
-    404: {
-        "raise_exception": TwitterAdsNotFoundError,
-        "message": "The resource you have specified cannot be found."
-    },
-    405: {
-        "raise_exception": TwitterAdsMethodNotFoundError,
-        "message": "The provided HTTP method is not supported by the URL."
-    },
-    408: {
-        "raise_exception": TwitterAdsRequestCancelledError,
-        "message": "Request is cancelled."
-    },
-    422: {
-        "raise_exception": TwitterAdsUnprocessableEntityError,
-        "message": "The request is well-formed but contains semantic errors."
-    },
-    429: {
-        "raise_exception": TwitterAdsClient429Error,
-        "message": "API rate limit exceeded, please retry after some time."
-    },
-    500: {
-        "raise_exception": TwitterAdsInternalServerError,
-        "message": "Internal error."
-    },
-    502: {
-        "raise_exception": TwitterAdsBadGatewayError,
-        "message": "Bad gateway."
-    },
-    503: {
-        "raise_exception": TwitterAdsServiceUnavailableError,
-        "message": "Service is unavailable."
-    }
+class XApiBackoffError(Exception):
+    """Base class for X API v2 errors that should trigger a backoff/retry."""
+    pass
+
+
+class XApiAuthenticationError(XApiClientError):
+    """401 - invalid/expired access token or invalid_grant on token refresh."""
+    pass
+
+
+class XApiForbiddenError(XApiClientError):
+    """403 - valid auth, but insufficient OAuth 2.0 scope/permission."""
+    pass
+
+
+class XApiNotFoundError(XApiClientError):
+    """404 - the requested resource/id does not exist (or the app lacks access to it)."""
+    pass
+
+
+class XApiBadRequestError(XApiClientError):
+    """400 - malformed request (bad/missing query params, invalid id format, etc)."""
+    pass
+
+
+class XApiRateLimitError(XApiBackoffError):
+    """429 - per-endpoint rate limit exceeded."""
+    pass
+
+
+class XApiServerError(XApiBackoffError):
+    """5xx - transient server-side error."""
+    pass
+
+
+X_API_ERROR_CODE_EXCEPTION_MAPPING = {
+    400: XApiBadRequestError,
+    401: XApiAuthenticationError,
+    403: XApiForbiddenError,
+    404: XApiNotFoundError,
+    429: XApiRateLimitError,
 }
 
 
-# get exception class based on status code
-def get_exception_for_status_code(status_code):
-    # if status code is not in above ERROR_CODE_EXCEPTION_MAPPING then 
-    # return defult class TwitterAdsClinetError
-    return ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("raise_exception", TwitterAdsClientError)
+def raise_for_error_v2(response):
+    """Raise a mapped XApi*Error for a non-200 `requests.Response` from api.x.com.
 
-# raise error with proper message based in error code from the response
-def raise_for_error(exception):
-    status_code = exception.code
+    X API v2 error bodies look like either:
+      {"title": "...", "detail": "...", "status": 401, "type": "..."}
+      {"errors": [{"message": "...", ...}]}
+    """
+    status_code = response.status_code
+    try:
+        body = response.json()
+    except ValueError:
+        body = {}
 
-    if exception.details:
-        error_message = exception.details[0].get("message", ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error"))  
-    else: 
-        error_message = ERROR_CODE_EXCEPTION_MAPPING.get(status_code, {}).get("message", "Unknown Error")
+    detail = body.get('detail') or body.get('title')
+    if not detail and body.get('errors'):
+        detail = '; '.join(e.get('message', str(e)) for e in body['errors'])
+    detail = detail or response.text[:300] or 'Unknown Error'
 
-    # get twitter-ads error code, message and prepare message
-    message = "HTTP-error-code: {}, Message: {}".format(status_code, error_message)
+    message = 'HTTP-error-code: {}, Message: {}'.format(status_code, detail)
 
-    # get exception class
-    exception = get_exception_for_status_code(status_code)
-
-    raise exception(message) from None
+    exception_class = X_API_ERROR_CODE_EXCEPTION_MAPPING.get(
+        status_code, XApiServerError if status_code >= 500 else XApiClientError)
+    raise exception_class(message) from None

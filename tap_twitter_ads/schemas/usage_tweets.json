@@ -1,0 +1,21 @@
+{
+  "type": ["null", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "cap_reset_day": {
+      "type": ["null", "integer"]
+    },
+    "project_id": {
+      "type": ["null", "string"]
+    },
+    "project_cap": {
+      "type": ["null", "integer"]
+    },
+    "project_usage": {
+      "type": ["null", "integer"]
+    },
+    "daily_project_usage": {
+      "type": ["null", "integer"]
+    }
+  }
+}

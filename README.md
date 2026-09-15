@@ -1,287 +1,208 @@
 # tap-twitter-ads
 
 This is a [Singer](https://singer.io) tap that produces JSON-formatted data
-following the [Singer
-spec](https://github.com/singer-io/getting-started/blob/master/SPEC.md).
+following the [Singer spec](https://github.com/singer-io/getting-started/blob/master/SPEC.md).
 
-This tap:
-
-- Pulls raw data from the [Twitter Ads API, version 7](https://developer.twitter.com/en/docs/ads/general/overview) using the [Twitter Ads Python SDK](https://github.com/twitterdev/twitter-python-ads-sdk).
-
-[Twitter Ads Tap: Sync Review](https://docs.google.com/document/d/1MrXWHGyOsCv-xI7ecuUWG0VIAy8ko5fwKn-I91p-PSc/edit?usp=sharing): Summary of tap sync process and looping
-
-[Twitter Ads Hierarchy and Terminology](https://developer.twitter.com/en/docs/tutorials/ads-api-hierarchy-terminology)
-![Twitter Ads Hierarchy](https://cdn.cms-twdigitalassets.com/content/dam/developer-twitter/adsapi/adsapi-heirarchy.png.img.fullhd.medium.png)
-
-- Extracts the following normal GET endpoints:
-  - [account_media](https://developer.twitter.com/en/docs/ads/creatives/api-reference/account-media#account-media)
-  - [accounts](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts)
-  - [advertiser_business_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/advertiser-business-categories#advertiser-business-categories)
-  - [tracking_tags](https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags#tracking-tags)
-  - [campaigns](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns)
-  - **cards**:
-    - [cards](https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards)
-    - [image_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-conversation#image-conversation-cards)
-    - [poll](https://developer.twitter.com/en/docs/ads/creatives/api-reference/poll#poll-cards)
-    - [video_conversation](https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-conversation#video-conversation-cards)
-    
-  - [content_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories)
-  - [funding_instruments](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments)
-  - [iab_categories](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/iab-categories#iab-categories)
-  - [line_item_apps](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/line-item-apps#line-item-apps)
-  - [line_items](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/line-items#line-items) (aka **ad_groups**)
-    - [targeting_criteria](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-criteria#targeting-criteria) (for each line_item)
-  - [media_creatives](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/media-creatives#media-creatives)
-  - [preroll_call_to_actions](https://developer.twitter.com/en/docs/ads/creatives/api-reference/preroll-call-to-actions#preroll-call-to-actions)
-  - [promotable_users](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promotable-users#promotable-users)
-  - [promoted_accounts](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promoted-accounts#promoted-accounts)
-  - [promoted_tweets](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promoted-tweets#promoted-tweets)
-  - [scheduled_promoted_tweets](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/scheduled-promoted-tweets#scheduled-promoted-tweets)
-  - [tailored_audiences](https://developer.twitter.com/en/docs/ads/audiences/api-reference/tailored-audiences#tailored-audiences)
-  - [tweets](https://developer.twitter.com/en/docs/ads/creatives/api-reference/tweets#get-accounts-account-id-scoped-timeline) (scheduled and published, not draft)
-
-- Extracts the following targeting GET endpoints:
-  - [targeting_conversations](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-conversations)
-  - [targeting_devices](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-devices)
-  - [targeting_events](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events) (for countries)
-  - [targeting_interests](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-interests)
-  - [targeting_languages](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-languages)
-  - [targeting_locations](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-locations) (for countries)
-  - [targeting_network_operators](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-network-operators) (for countries)
-  - [targeting_platform_versions](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-platform-versions)
-  - [targeting_platforms](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-platforms)
-  - [targeting_tv_markets](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-markets)
-    - [targeting_tv_shows](https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-shows) (for each)
-
-- Extracts Asyncronous Reports using:
-  - Supports many reports, each with Report Config Settings:
-    - **Name**: Name of report
-    - **Entity**: 7 Entity Types
-    - **Segment**: 20 Segmentation Types
-    - **Granularity**: DAY, HOUR, or TOTAL
-  - [Twitter Ads Entity Segmentation Rules (Google Sheet)](https://docs.google.com/spreadsheets/d/1Cn3B1TPZOjg9QhnnF44Myrs3W8hNOSyFRH6qn8SCc7E/edit?usp=sharing)
-  - [Metrics and Segmentation Rules](https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation)
-  - [active_entities](https://developer.twitter.com/en/docs/ads/analytics/api-reference/active-entities)
-  - [async_queued_jobs](https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#post-stats-jobs-accounts-account-id)
-  - [async_job_status](https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#get-stats-jobs-accounts-account-id)
-  - async_results (download URL)
-
-- Outputs the schema for each resource
-- Incrementally pulls data based on the input state
-
+This tap extracts data from the **X API v2** (`api.x.com/2`, formerly Twitter
+API v2) using **OAuth 2.0** exclusively. The legacy OAuth 1.0a Twitter/X Ads
+API (`ads-api.x.com`) integration has been removed - see `CHANGELOG.md`.
 
 ## Authentication
-Twitter Ads requires authentication headers using OAuth 1.0a with an access token obtained via 3-legged OAuth flow. The access token, once generated, is permanent, but request tokens are short-lived without a documented expiry.
-The process is described in [Obtaining Ads Account Credential](https://developer.twitter.com/en/docs/ads/general/guides/obtaining-ads-account-access).
+
+Two OAuth 2.0 mechanisms are used, depending on what each endpoint supports:
+
+- **User context** (Authorization Code + PKCE) - `client_id` / `client_secret`
+  / `access_token` / `refresh_token`. This is required for every stream
+  in this tap and is the only mechanism verified to work end-to-end.
+  X API v2 **rotates `refresh_token` on every use** (the previous one is
+  invalidated instantly) - this tap persists the rotated `access_token` and
+  `refresh_token` back to the config file immediately after every refresh.
+- **App-only Bearer Token** - required (with no user-context alternative) by
+  `compliance_jobs` and `usage_tweets`. A `client_credentials` grant using
+  only an OAuth 2.0 `client_id`/`client_secret` does **not** reliably produce
+  a token these endpoints accept (confirmed via live testing - X responds
+  with 403 "Authenticating with Unknown is forbidden"). If you have a
+  genuine classic App-only Bearer Token from the developer portal, set it as
+  `bearer_token` in config and these two streams will use it as-is.
+
+## Configuration Reference
+
+`config.json` fields fall into two groups: fields that are always required,
+and optional fields that each activate a specific set of streams (see
+`config.json.example`). This mirrors the config-field reference documented
+in the `streams.py` module docstring - if you change what a field controls,
+update both.
+
+**Always required** (every sync needs these regardless of which streams are selected):
+
+| Field | Purpose |
+|---|---|
+| `start_date` | Initial bookmark value for INCREMENTAL streams |
+| `client_id` | OAuth 2.0 Client ID |
+| `client_secret` | OAuth 2.0 Client Secret |
+| `access_token` | OAuth 2.0 user-context access token |
+| `refresh_token` | OAuth 2.0 user-context refresh token (rotated + persisted on every use) |
+
+**Optional - id-list fields** (comma-separated string or JSON array; the
+stream(s) listed are skipped with a logged warning, never an error, if the
+field is unset):
+
+| Field | Activates |
+|---|---|
+| `user_ids` | `users_by_ids` |
+| `usernames` | `users_by_usernames` |
+| `tweet_ids` | `tweets_by_ids`, `post_liking_users`, `post_quote_tweets`, `post_reposted_by`, `post_reposts` |
+| `space_ids` | `spaces_by_ids`, `space_by_id` (+ children `space_tweets`, `space_buyers`) |
+| `creator_ids` | `spaces_by_creator_ids` (falls back to the authenticated user's own id if unset - never skipped) |
+| `list_ids` | `list_by_id` (+ children `list_tweets`, `list_members`, `list_followers`) |
+| `media_keys` | `media_by_keys` |
+| `broadcast_ids` | `broadcast_by_id` |
+| `scheduled_broadcast_ids` | `scheduled_broadcast_by_id` |
+| `community_ids` | `community_by_id` |
+| `news_ids` | `news_by_id` |
+| `woeids` | `trends_by_woeid` |
+
+**Optional - single-value fields**:
+
+| Field | Activates | Default if unset |
+|---|---|---|
+| `compliance_job_type` | `compliance_jobs` | `tweets` (stream still runs) |
+| `users_search_query` | `users_search` | none - **required for that stream**, skipped without it |
+| `post_search_query` | `post_search_recent`, `post_search_all`, `post_counts_recent`, `post_counts_all` | none - **required for those streams**, skipped without it |
+| `communities_search_query` | `communities_search` | none - **required for that stream**, skipped without it |
+| `news_search_query` | `news_search` | none - **required for that stream**, skipped without it |
+| `community_notes_test_mode` | `community_notes_search_written`, `community_notes_eligible_posts` | `false` (streams still run) |
+| `bearer_token` | A genuine App-only Bearer Token, used as-is (no minting attempted) by every `auth='app'` stream: `usage_tweets`, `compliance_jobs`, `bots`, `post_counts_all` | none - those 4 streams fail clearly without it (see `client.py`) |
+| `page_size` | Tunes pagination page size for ALL streams | `100` |
+| `request_timeout` | Tunes HTTP request timeout (seconds) for ALL streams | `300` |
+
+## Streams
+
+56 streams are implemented, covering every GET endpoint in the X API v2
+OpenAPI spec (`docs.x.com/openapi.json`) that supports OAuth 2.0 and fits a
+batch-poll Singer tap model (see Exclusions below).
+
+**Authenticated-user streams** (parent `users_me`, no config needed):
+
+| Stream | Endpoint | Replication | Scope |
+|---|---|---|---|
+| `users_me` | `GET /2/users/me` | FULL_TABLE | `users.read`, `tweet.read` |
+| `account` | `GET /2/account` | FULL_TABLE | `developer.read` |
+| `usage_tweets` | `GET /2/usage/tweets` | FULL_TABLE | App-only Bearer only |
+| `usage_credits` | `GET /2/usage/credits` | FULL_TABLE | - |
+| `personalized_trends` | `GET /2/users/personalized_trends` | FULL_TABLE | `users.read`, `tweet.read` |
+| `user_reposts_of_me` | `GET /2/users/reposts_of_me` | FULL_TABLE | `timeline.read`, `tweet.read` |
+| `bots` | `GET /2/bots` | FULL_TABLE | App-only Bearer only |
+| `webhooks` | `GET /2/webhooks` | FULL_TABLE | - |
+| `user_tweets` | `GET /2/users/{id}/tweets` | INCREMENTAL (`created_at`) | `tweet.read`, `users.read` |
+| `user_mentions` | `GET /2/users/{id}/mentions` | INCREMENTAL (`created_at`) | `tweet.read`, `users.read` |
+| `user_home_timeline` | `GET /2/users/{id}/timelines/reverse_chronological` | INCREMENTAL (`created_at`) | `tweet.read`, `users.read` |
+| `user_liked_tweets` | `GET /2/users/{id}/liked_tweets` | FULL_TABLE | `like.read` |
+| `user_bookmarks` | `GET /2/users/{id}/bookmarks` | FULL_TABLE | `bookmark.read` |
+| `user_bookmark_folders` | `GET /2/users/{id}/bookmarks/folders` | FULL_TABLE | `bookmark.read` |
+| `user_followers` | `GET /2/users/{id}/followers` | FULL_TABLE | `follows.read` |
+| `user_following` | `GET /2/users/{id}/following` | FULL_TABLE | `follows.read` |
+| `user_blocking` | `GET /2/users/{id}/blocking` | FULL_TABLE | `block.read` |
+| `user_muting` | `GET /2/users/{id}/muting` | FULL_TABLE | `mute.read` |
+| `user_owned_lists` | `GET /2/users/{id}/owned_lists` | FULL_TABLE | `list.read` |
+| `user_pinned_lists` | `GET /2/users/{id}/pinned_lists` | FULL_TABLE | `list.read` |
+| `user_list_memberships` | `GET /2/users/{id}/list_memberships` | FULL_TABLE | `list.read` |
+| `user_followed_lists` | `GET /2/users/{id}/followed_lists` | FULL_TABLE | `list.read` |
+| `user_affiliates` | `GET /2/users/{id}/affiliates` | FULL_TABLE | `tweet.read`, `users.read` |
+| `dm_events` | `GET /2/dm_events` | FULL_TABLE | `dm.read` |
+
+**Config-driven batch lookups** (no parent needed - `config_ids`):
+
+| Stream | Endpoint | Config field |
+|---|---|---|
+| `users_by_ids` | `GET /2/users` | `user_ids` |
+| `users_by_usernames` | `GET /2/users/by` | `usernames` |
+| `tweets_by_ids` | `GET /2/tweets` | `tweet_ids` |
+| `spaces_by_ids` | `GET /2/spaces` | `space_ids` |
+| `spaces_by_creator_ids` | `GET /2/spaces/by/creator_ids` | `creator_ids` (defaults to the authenticated user) |
+| `media_by_keys` | `GET /2/media` | `media_keys` |
+
+**Config-driven parent loops** (each configured id is its own record *and* a
+parent for its children):
+
+| Parent | Endpoint | Config field | Children |
+|---|---|---|---|
+| `list_by_id` | `GET /2/lists/{id}` | `list_ids` | `list_tweets`, `list_members`, `list_followers` |
+| `space_by_id` | `GET /2/spaces/{id}` | `space_ids` | `space_tweets`, `space_buyers` |
+| `broadcast_by_id` | `GET /2/broadcasts/{id}` | `broadcast_ids` | - |
+| `scheduled_broadcast_by_id` | `GET /2/broadcasts/scheduled/{id}` | `scheduled_broadcast_ids` | - |
+| `community_by_id` | `GET /2/communities/{id}` | `community_ids` | - |
+| `news_by_id` | `GET /2/news/{id}` | `news_ids` | - |
+| `trends_by_woeid` | `GET /2/trends/by/woeid/{id}` | `woeids` | - |
+
+**Per-post engagement lookups** (config `tweet_ids`, paginated):
+`post_liking_users`, `post_quote_tweets`, `post_reposted_by`, `post_reposts`.
+
+**Search / query-driven streams** (skipped with a clear warning if their
+required config field isn't set):
+
+| Stream | Endpoint | Required config |
+|---|---|---|
+| `users_search` | `GET /2/users/search` | `users_search_query` |
+| `post_search_recent` | `GET /2/tweets/search/recent` | `post_search_query` (INCREMENTAL) |
+| `post_search_all` | `GET /2/tweets/search/all` | `post_search_query` (INCREMENTAL, needs elevated access) |
+| `post_counts_recent` | `GET /2/tweets/counts/recent` | `post_search_query` |
+| `post_counts_all` | `GET /2/tweets/counts/all` | `post_search_query` (App-only Bearer only) |
+| `communities_search` | `GET /2/communities/search` | `communities_search_query` |
+| `news_search` | `GET /2/news/search` | `news_search_query` |
+| `community_notes_search_written` | `GET /2/notes/search/notes_written` | `community_notes_test_mode` (defaults `false`) |
+| `community_notes_eligible_posts` | `GET /2/notes/search/posts_eligible_for_notes` | `community_notes_test_mode` (defaults `false`) |
+| `compliance_jobs` | `GET /2/compliance/jobs` | `compliance_job_type` (defaults `tweets`, App-only Bearer only) |
+
+Compliance Notes access, Academic/Pro search tiers, and App-only-Bearer-only
+endpoints may return 403/404 depending on your account's access level - this
+is an X API access-tier limitation, not a tap defect.
+
+Streams whose endpoint doesn't support the OAuth 2.0 scopes your app was
+granted will fail clearly (HTTP 403) without affecting other streams - one
+stream's failure never discards data already synced by others, and a
+required-but-unconfigured stream is skipped with an explicit warning
+(never silently).
+
+**Excluded by design** (not REST/batch-poll compatible, or not a data
+endpoint): persistent streaming connections (filtered/sampled/firehose
+streams, 17 endpoints), Webhooks/Account Activity/Activity subscription
+*management* (create/delete/validate - `webhooks`/`GET /2/webhooks` itself
+IS included as a read), Chat (E2EE messaging), Broadcast chat, and media
+upload/status/analytics endpoints (binary uploads, not pollable data).
 
 ## Quick Start
 
-1. Install
-
-    Clone this repository, and then install using setup.py. We recommend using a virtualenv:
+1. Install:
 
     ```bash
     > virtualenv -p python3 venv
     > source venv/bin/activate
-    > python setup.py install
-    OR
-    > cd .../tap-twitter-ads
-    > pip install .
-    ```
-2. Dependent libraries
-    The following dependent libraries were installed.
-    ```bash
-    > pip install singer-python
-    > pip install singer-tools
-    > pip install target-stitch
-    > pip install twitter-ads (v7.0.0)
-    ```
-    - [singer-tools](https://github.com/singer-io/singer-tools)
-    - [target-stitch](https://github.com/singer-io/target-stitch)
-    - [twitter-ads](https://github.com/twitterdev/twitter-python-ads-sdk)
-
-3. Create your tap's `config.json` with the following parameters:
-    - `start_date`: Absolute beginning date for bookmarked endpoints.
-    - `user_agent`: Tap name and email address for API logging.
-    - OAuth 1.0a credentials:
-      - `consumer_key`
-      - `consumer_secret`
-      - `access_token`
-      - `access_token_secret`
-    - `account_ids`: Comma-delimited list of Twitter Ad Account IDs.
-    - `attribution_window`: Number of days for latency look-back period to allow analytical reporting numbers to stabilize.
-    - `with_deleted`: true or false; specifies whether to include logically deleted records in the results.
-    - `country_codes`: Comma-delimited list of ISO 2-letter country codes for targeting and segmenttation.
-    - `page_size`: An optional parameter to configure custom page_size.
-    - `reports`: Object array of specified reports with name, entity, segment, and granularity.
-    - `request_timeout`: To configure the read and connect timeout for twitter-ads client. Default is 300 seconds.
-
-    ```json
-    {
-        "start_date": "2019-01-01T00:00:00Z",
-        "user_agent": "tap-twitter-ads <api_user_email@your_company.com>",
-        "consumer_key": "YOUR_TWITTER_ADS_CONSUMER_KEY",
-        "consumer_secret": "YOUR_TWITTER_ADS_CONSUMER_SECRET",
-        "access_token": "YOUR_TWITTER_ADS_ACCESS_TOKEN",
-        "access_token_secret": "YOUR_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-        "account_ids": "id1, id2, id3",
-        "attribution_window": "14",
-        "with_deleted": "true",
-        "country_codes": "US, CA, MX, DE",
-        "page_size": 1000,
-        "reports": [
-            {
-            "name": "campaigns_genders_hourly_report",
-            "enitity": "CAMPAIGN",
-            "segment": "GENDER",
-            "granularity": "HOUR"
-            },
-            {
-            "name": "line_items_regions_daily_report",
-            "enitity": "LINE_ITEM",
-            "segment": "REGIONS",
-            "granularity": "DAY"
-            }
-        ],
-        "request_timeout": 300
-    }
-    ```
-    
-    Optionally, also create a `state.json` file. `currently_syncing` is an optional attribute used for identifying the last object to be synced in case the job is interrupted mid-stream.  The next run would begin where the last job left off.
-    Each bookmarked endpoint that supports INCREMENTAL syncs will be listed with its max last processed record based on `updated_at`, `created_at`, or `end_time` (depending on the endpoint).
-
-    ```json
-    {
-        "currently_syncing": "creatives",
-        "bookmarks": {
-            "accounts": {
-                "account_id_1": "2019-06-11T13:37:55Z",
-                "account_id_2": "2019-06-11T18:37:55Z",
-            },
-            "account_media": {
-              "account_id_1": "2019-06-19T19:48:42Z",
-              "account_id_2": "2019-05-19T19:48:42Z"
-            }
-            "..."
-        }
-    }
+    > pip install -e .
     ```
 
-4. Run the Tap in Discovery Mode
-    This creates a catalog.json for selecting objects/fields to integrate:
+2. Create `config.json` (see `config.json.example`). Only `start_date`,
+   `client_id`, `client_secret`, `access_token`, and `refresh_token` are
+   required; every other field is optional and only needed by the specific
+   streams that use it (see the Streams table above).
+
+3. Run discovery (does not require a live/valid token - streams are
+   statically defined):
+
     ```bash
     > tap-twitter-ads --config config.json --discover > catalog.json
     ```
-   See the Singer docs on discovery mode
-   [here](https://github.com/singer-io/getting-started/blob/master/docs/DISCOVERY_MODE.md#discovery-mode).
 
-5. Run the Tap in Sync Mode (with catalog) and [write out to state file](https://github.com/singer-io/getting-started/blob/master/docs/RUNNING_AND_DEVELOPING.md#running-a-singer-tap-with-a-singer-target)
+4. Select streams in `catalog.json` (set `"selected": true` in each stream's
+   top-level metadata), then run sync:
 
-    For Sync mode:
     ```bash
-    > tap-twitter-ads --config tap_config.json --catalog catalog.json > state.json
-    > tail -1 state.json > state.json.tmp && mv state.json.tmp state.json
-    ```
-    To load to json files to verify outputs:
-    ```bash
-    > tap-twitter-ads --config tap_config.json --catalog catalog.json | target-json > state.json
-    > tail -1 state.json > state.json.tmp && mv state.json.tmp state.json
-    ```
-    To pseudo-load to [Stitch Import API](https://github.com/singer-io/target-stitch) with dry run:
-    ```bash
-    > tap-twitter-ads --config tap_config.json --catalog catalog.json | target-stitch --config target_config.json --dry-run > state.json
-    > tail -1 state.json > state.json.tmp && mv state.json.tmp state.json
+    > tap-twitter-ads --config config.json --catalog catalog.json --state state.json
     ```
 
-6. Test the Tap
-    
-    While developing the twitter Ads tap, the following utilities were run in accordance with Singer.io best practices:
-    Pylint to improve [code quality](https://github.com/singer-io/getting-started/blob/master/docs/BEST_PRACTICES.md#code-quality):
-    ```bash
-    > pylint tap_twitter_ads -d missing-docstring -d logging-format-interpolation -d too-many-locals -d too-many-arguments
-    ```
-    Pylint test resulted in the following score:
-    ```bash
-    Your code has been rated at 9.72/10.
-    ```
+## Tests
 
-    To [check the tap](https://github.com/singer-io/singer-tools#singer-check-tap) and verify working:
-    ```bash
-    > tap-twitter-ads --config tap_config.json --catalog catalog.json | singer-check-tap > state.json
-    > tail -1 state.json > state.json.tmp && mv state.json.tmp state.json
-    ```
-    Check tap resulted in the following:
-    ```bash
-      The output is valid.
-      It contained 872667 messages for 62 streams.
-
-          63 schema messages
-      872432 record messages
-          172 state messages
-
-      Details by stream:
-      +--------------------------------------------+---------+---------+
-      | stream                                     | records | schemas |
-      +--------------------------------------------+---------+---------+
-      | account_media                              | 0       | 1       |
-      | accounts                                   | 1       | 1       |
-      | accounts_conversion_tags_hourly_report     | 0       | 1       |
-      | accounts_daily_report                      | 87      | 1       |
-      | accounts_metros_hourly_report              | 226240  | 1       |
-      | advertiser_business_categories             | 16      | 1       |
-      | tracking_tags                              | 64      | 1       |
-      | campaigns                                  | 2       | 1       |
-      | campaigns_conversion_tags_daily_report     | 0       | 1       |
-      | campaigns_daily_report                     | 10      | 1       |
-      | campaigns_genders_hourly_report            | 504     | 1       |
-      | cards_image_conversation                   | 0       | 1       |
-      | cards_poll                                 | 0       | 1       |
-      | cards_video_conversation                   | 0       | 1       |
-      | content_categories                         | 392     | 1       |
-      | funding_instruments                        | 1       | 1       |
-      | funding_instruments_age_daily_report       | 175     | 1       |
-      | funding_instruments_devices_hourly_report  | 15288   | 1       |
-      | funding_instruments_hourly_report          | 84      | 1       |
-      | iab_categories                             | 15      | 1       |
-      | line_item_apps                             | 0       | 1       |
-      | line_items                                 | 2       | 1       |
-      | line_items_conversion_tags_hourly_report   | 0       | 1       |
-      | line_items_daily_report                    | 10      | 1       |
-      | line_items_platform_versions_hourly_report | 3108    | 1       |
-      | line_items_platforms_hourly_report         | 588     | 1       |
-      | line_items_regions_daily_report            | 630     | 1       |
-      | media_creatives                            | 0       | 1       |
-      | media_creatives_daily_report               | 0       | 1       |
-      | organic_tweets_daily_report                | 82      | 2       |
-      | organic_tweets_hourly_report               | 1344    | 1       |
-      | preroll_call_to_actions                    | 0       | 1       |
-      | promotable_users                           | 0       | 1       |
-      | promoted_accounts                          | 0       | 1       |
-      | promoted_accounts_daily_report             | 0       | 1       |
-      | promoted_tweets                            | 2       | 1       |
-      | promoted_tweets_daily_report               | 10      | 1       |
-      | promoted_tweets_interests_daily_report     | 3210    | 1       |
-      | promoted_tweets_keywords_hourly_report     | 420     | 1       |
-      | promoted_tweets_languages_daily_report     | 205     | 1       |
-      | scheduled_promoted_tweets                  | 0       | 1       |
-      | tailored_audiences                         | 0       | 1       |
-      | targeting_app_store_categories             | 84      | 1       |
-      | targeting_conversations                    | 41136   | 1       |
-      | targeting_criteria                         | 10      | 1       |
-      | targeting_devices                          | 355     | 1       |
-      | targeting_events                           | 355     | 1       |
-      | targeting_interests                        | 361     | 1       |
-      | targeting_languages                        | 21      | 1       |
-      | targeting_locations                        | 56682   | 1       |
-      | targeting_network_operators                | 161     | 1       |
-      | targeting_platform_versions                | 38      | 1       |
-      | targeting_platforms                        | 4       | 1       |
-      | targeting_tv_markets                       | 39      | 1       |
-      | targeting_tv_shows                         | 520694  | 1       |
-      | tweets                                     | 2       | 1       |
-      +--------------------------------------------+---------+---------+
-
-    ```
----
-
-Copyright &copy; 2019 Stitch
+```bash
+> pip install -e .
+> python -m pytest tests/unittests -q
+```

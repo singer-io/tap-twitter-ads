@@ -1,0 +1,21 @@
+{
+  "type": ["null", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": ["null", "string"]
+    },
+    "status": {
+      "type": ["null", "string"]
+    },
+    "scoring_status": {
+      "type": ["null", "string"]
+    },
+    "info": {
+      "type": ["null", "string"]
+    },
+    "test_result": {
+      "type": ["null", "string"]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": ["null", "object"],
+  "additionalProperties": false,
+  "properties": {
+    "trend_name": {
+      "type": ["null", "string"]
+    },
+    "post_count": {
+      "type": ["null", "integer"]
+    },
+    "category": {
+      "type": ["null", "string"]
+    },
+    "trending_since": {
+      "type": ["null", "string"],
+      "format": "date-time"
+    }
+  }
+}

@@ -41,11 +41,12 @@ def main():
     config_path = getattr(parsed_args, 'config_path', None)
 
     client = XApiClient(config, config_path=config_path)
-    client.check_credentials()
 
     if parsed_args.discover:
         do_discover()
     elif parsed_args.catalog:
+        # Only sync needs valid credentials - discover is purely static (see do_discover).
+        client.check_credentials()
         _sync(client=client, config=config, catalog=catalog, state=state)
 
 

@@ -96,6 +96,37 @@ class TestSyncUsersMeGroup(unittest.TestCase):
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'users_me']), 0)
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'user_tweets']), 2)
 
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_child_streams_emit_schema_before_records(self, mocked_get, mocked_post):
+        # Regression guard: sync_child_stream previously never called
+        # write_schema, so RECORD messages for every users_me-child stream
+        # (user_tweets, user_followers, ...) were emitted with no preceding
+        # SCHEMA message - a Singer spec violation most targets reject.
+        mock_app_token(mocked_post)
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: self._responses(url, params)
+
+        catalog = select_all_streams(discover(), only=['users_me', 'user_tweets', 'user_followers'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+
+        schema_streams = {m['stream'] for m in messages if m['type'] == 'SCHEMA'}
+        self.assertIn('user_tweets', schema_streams)
+        self.assertIn('user_followers', schema_streams)
+
+        # Every stream's SCHEMA message must come before its first RECORD.
+        for stream_name in ('user_tweets', 'user_followers'):
+            first_schema_idx = next(i for i, m in enumerate(messages)
+                                     if m['type'] == 'SCHEMA' and m['stream'] == stream_name)
+            first_record_idx = next(i for i, m in enumerate(messages)
+                                     if m['type'] == 'RECORD' and m['stream'] == stream_name)
+            self.assertLess(first_schema_idx, first_record_idx)
+
 
 class TestSyncErrorIsolation(unittest.TestCase):
     @mock.patch('tap_twitter_ads.client.requests.Session.post')

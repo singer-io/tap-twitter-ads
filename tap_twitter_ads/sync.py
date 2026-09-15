@@ -280,6 +280,7 @@ def sync_child_stream(client, config, catalog, state, stream_name, parent_id, tr
     (mirrors `sync_search_stream`'s bookmark logic, but keyed by an actual
     parent record id instead of a resolved search-query value)."""
     stream = STREAMS[stream_name]
+    write_schema(catalog, stream_name)
     schema_stream = catalog.get_stream(stream_name)
     stream_metadata = metadata.to_map(schema_stream.metadata)
     schema = schema_stream.schema.to_dict()

@@ -37,6 +37,8 @@ import singer
 
 from tap_twitter_ads.exceptions import (
     XApiAuthenticationError,
+    XApiBackoffError,
+    XApiClientError,
     XApiRateLimitError,
     XApiServerError,
     raise_for_error_v2,
@@ -215,6 +217,27 @@ class XApiClient:
             self.refresh_access_token()
             return self.get(path, params=params, auth='user', _allow_refresh=False)
         return response.json()
+
+    def check_credentials(self):
+        """Validate the configured OAuth 2.0 credentials by making one
+        lightweight authenticated call (`GET /2/users/me`, `auth='user'`).
+        Called once at tap startup (before sync) so a bad/expired
+        client_id/client_secret/access_token/refresh_token combination fails
+        fast with a clear error instead of partway through the first stream.
+        A 401 here is still handled by the normal refresh-and-retry path in
+        `get()`, so a merely-expired access_token does not fail this check.
+        Raises `XApiAuthenticationError` (chaining the original error) if
+        credentials are invalid/rejected.
+        """
+        try:
+            self.get('/2/users/me', auth='user')
+        except (XApiClientError, XApiBackoffError) as exc:
+            LOGGER.error('Credential check failed - could not authenticate with X API v2: %s', exc)
+            raise XApiAuthenticationError(
+                'Unable to authenticate with X API v2 using the configured OAuth 2.0 '
+                'credentials. Verify client_id, client_secret, access_token, and '
+                'refresh_token are all valid.') from exc
+        LOGGER.info('Credential check passed - OAuth 2.0 credentials are valid')
 
     def get_paginated(self, path, params, auth='app', page_size=None, max_pages=None):
         """Yield each page (raw response dict) for a cursor-paginated X API v2

@@ -41,6 +41,7 @@ def main():
     config_path = getattr(parsed_args, 'config_path', None)
 
     client = XApiClient(config, config_path=config_path)
+    client.check_credentials()
 
     if parsed_args.discover:
         do_discover()

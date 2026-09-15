@@ -98,6 +98,49 @@ class TestXApiClientUserAuth(unittest.TestCase):
         self.assertEqual(saved_config['refresh_token'], 'rotated_refresh_token')
 
 
+class TestXApiClientCheckCredentials(unittest.TestCase):
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_check_credentials_passes_on_success(self, mocked_get):
+        mocked_get.return_value = mock_response(200, {'data': {'id': '123'}})
+        client = XApiClient(make_config())
+
+        client.check_credentials()  # should not raise
+
+        self.assertEqual(mocked_get.call_args.kwargs['headers']['Authorization'], 'Bearer test_access_token')
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_check_credentials_survives_expired_access_token(self, mocked_get, mocked_post):
+        # An expired access_token alone should NOT fail the check - get()'s
+        # normal 401 refresh-and-retry path handles it transparently.
+        mocked_get.side_effect = [
+            mock_response(401, {'title': 'Unauthorized'}),
+            mock_response(200, {'data': {'id': '123'}}),
+        ]
+        mocked_post.return_value = mock_response(200, {
+            'access_token': 'new_access_token',
+            'refresh_token': 'new_refresh_token',
+        })
+        client = XApiClient(make_config())
+
+        client.check_credentials()  # should not raise
+
+        self.assertEqual(client.access_token, 'new_access_token')
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_check_credentials_raises_clear_error_on_invalid_refresh_token(self, mocked_get, mocked_post):
+        mocked_get.return_value = mock_response(401, {'title': 'Unauthorized'})
+        mocked_post.return_value = mock_response(400, {
+            'error': 'invalid_grant',
+            'error_description': 'Value passed for the token was invalid.',
+        })
+        client = XApiClient(make_config())
+
+        with self.assertRaises(XApiAuthenticationError):
+            client.check_credentials()
+
+
 class TestXApiClientAppAuth(unittest.TestCase):
     @mock.patch('tap_twitter_ads.client.requests.Session.post')
     @mock.patch('tap_twitter_ads.client.requests.Session.get')

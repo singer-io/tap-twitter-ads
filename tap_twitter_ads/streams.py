@@ -14,58 +14,13 @@ Class hierarchy:
     -> concrete stream classes (UsersMe, UserTweets, ...), each setting only
        the attributes that differ per endpoint (path, key_properties, auth,
        params, source_key, replication_method/key, required_params, ...).
-       Each concrete class's docstring states, in one line: what the stream
-       returns, and - if applicable - which config field controls it
-       (required vs optional, and the default used when optional and unset).
+       Each concrete class's docstring states, in one line, what the stream
+       returns.
 
-CONFIGURATION FIELD REFERENCE (see README.md "Configuration Reference" for
-the full table): every config field below is OPTIONAL unless noted -
-omitting it simply means the stream(s) it controls are skipped (with a
-logged warning, never silently) rather than causing an error.
-
-  Required for every sync regardless of selected streams:
-    start_date, client_id, client_secret, access_token, refresh_token
-
-  Optional, id-list fields (comma-separated string or JSON array) - each
-  activates exactly the stream(s) noted:
-    user_ids                 -> users_by_ids
-    usernames                -> users_by_usernames
-    tweet_ids                -> tweets_by_ids, post_liking_users,
-                                 post_quote_tweets, post_reposted_by, post_reposts
-    space_ids                -> spaces_by_ids, space_by_id (+ children
-                                 space_tweets, space_buyers)
-    creator_ids               -> spaces_by_creator_ids (falls back to the
-                                 authenticated user's own id if unset)
-    list_ids                  -> list_by_id (+ children list_tweets,
-                                 list_members, list_followers)
-    media_keys                -> media_by_keys
-    broadcast_ids              -> broadcast_by_id
-    scheduled_broadcast_ids   -> scheduled_broadcast_by_id
-    community_ids             -> community_by_id
-    news_ids                  -> news_by_id
-    woeids                    -> trends_by_woeid
-
-  Optional, single-value fields:
-    compliance_job_type       -> compliance_jobs (default 'tweets')
-    users_search_query        -> users_search (REQUIRED for that stream -
-                                 no default; stream is skipped without it)
-    post_search_query         -> post_search_recent, post_search_all,
-                                 post_counts_recent, post_counts_all
-                                 (REQUIRED for those streams - no default)
-    communities_search_query  -> communities_search (REQUIRED - no default)
-    news_search_query         -> news_search (REQUIRED - no default)
-    community_notes_test_mode -> community_notes_search_written,
-                                 community_notes_eligible_posts
-                                 (default False)
-    bearer_token               -> a genuine App-only Bearer Token; used
-                                 as-is (no minting attempted) by every
-                                 `auth='app'` stream: usage_tweets,
-                                 compliance_jobs, bots, post_counts_all.
-                                 Without it those 4 streams will fail
-                                 clearly (see client.py docstring).
-    page_size / request_timeout -> tune pagination page size / HTTP
-                                 timeout for ALL streams; do not gate
-                                 which streams run.
+The tap runs with just `start_date`, `client_id`, `client_secret`,
+`access_token`, and `refresh_token`. Streams that look up a specific id/list
+(tweets, spaces, lists, trends, searches, ...) default to the authenticated
+user's own data unless told otherwise.
 
 Field-selection constants below intentionally request a curated, useful
 subset of each object's ~20-50 available fields (not every field X offers)
@@ -110,12 +65,6 @@ USAGE_FIELDS = 'cap_reset_day,project_cap,project_id,project_usage,daily_project
 USAGE_CREDITS_FIELDS = 'total_balance,free_balance,prepaid_balance'
 DM_EVENT_FIELDS = ('id,event_type,text,dm_conversation_id,sender_id,participant_ids,'
                     'created_at,referenced_posts,attachments')
-BROADCAST_FIELDS = ('id,broadcast_id,title,state,media_key,tweet_id,twitter_user_id,'
-                     'start_ms,end_ms,scheduled_start_ms,scheduled_end_ms,created_at_ms,'
-                     'updated_at_ms,total_watched,total_watching,language,share_url')
-COMMUNITY_FIELDS = 'id,name,description,created_at,member_count,join_policy,access'
-NEWS_FIELDS = 'id,name,category,summary,keywords,updated_at'
-MEDIA_FIELDS = 'media_key,type,url,duration_ms,height,width,alt_text,public_metrics'
 COMMUNITY_NOTE_FIELDS = 'id,status,scoring_status,info,test_result'
 POST_COUNT_FIELDS = 'start,end,post_count'
 WEBHOOK_FIELDS = 'id,url,valid,created_at'
@@ -163,10 +112,9 @@ class Stream:
     def parent(self):
         """Only 'parent' streams have a true parent STREAM (used for
         parent-tap-stream-id catalog metadata and for locating children via
-        `_children_of()` in sync.py). For 'config_loop' etc. `source_key` is a
-        CONFIG FIELD name (e.g. 'list_ids'), not a stream id, and must NOT be
-        exposed as `.parent` - doing so previously caused those streams to be
-        silently skipped by the sync dispatch loop."""
+        `_children_of()` in sync.py). Other source types also set
+        `source_key`, but to something other than a stream id, so it must
+        NOT be exposed as `.parent`."""
         return self.source_key if self.source_type == 'parent' else None
 
 
@@ -193,20 +141,20 @@ class ParentStream(Stream):
 
 
 class ConfigIdsStream(Stream):
-    """Batch lookup: `{id_query_param}` populated (chunked) from a config id
-    list (`source_key` holds the config field name)."""
+    """Batch lookup: `{id_query_param}` populated (chunked) from a list of ids
+    (`source_key` names the field holding them)."""
     source_type = 'config_ids'
     paginated = False
 
 
 class ConfigIdsSelfDefaultStream(ConfigIdsStream):
     """Like ConfigIdsStream, but falls back to the authenticated user's own id
-    if the config list is absent."""
+    if no ids are given."""
     source_type = 'config_ids_self_default'
 
 
 class ConfigLoopStream(Stream):
-    """Loop over a config id list (`source_key`); each id is BOTH its own
+    """Loop over a list of ids (`source_key`); each id is BOTH its own
     emitted record (via `{id}` in path) AND a parent id for this stream's
     children."""
     source_type = 'config_loop'
@@ -214,18 +162,17 @@ class ConfigLoopStream(Stream):
 
 
 class ConfigLoopMultiStream(Stream):
-    """Loop over a config id list (`source_key`); each id's response `data` is
+    """Loop over a list of ids (`source_key`); each id's response `data` is
     an array of records, all emitted (no parent relationship, e.g. trends).
     Supports `paginated=True` (loops pagination per id too)."""
     source_type = 'config_loop_multi'
 
 
 class SearchStream(Stream):
-    """One or more required query params sourced from config
-    (`required_params`); if any resolve to None the stream is skipped (with a
-    warning, not silently). Supports `paginated=True` and, if
-    `replication_key` is set, INCREMENTAL bookmarking keyed by the resolved
-    query value itself."""
+    """One or more required query params (`required_params`); if any resolve
+    to None the stream is skipped (with a warning, not silently). Supports
+    `paginated=True` and, if `replication_key` is set, INCREMENTAL
+    bookmarking keyed by the resolved query value itself."""
     source_type = 'search'
 
 
@@ -235,7 +182,7 @@ class SearchStream(Stream):
 
 # ---- Authenticated-user singletons -------------------------------------
 class UsersMe(SingletonStream):
-    """The authenticated user's own profile. No config required."""
+    """The authenticated user's own profile."""
     tap_stream_id = 'users_me'
     path = '/2/users/me'
     key_properties = ['id']
@@ -244,7 +191,7 @@ class UsersMe(SingletonStream):
 
 
 class Account(SingletonStream):
-    """The authenticated user's X Developer Platform account info. No config required."""
+    """The authenticated user's X Developer Platform account info."""
     tap_stream_id = 'account'
     path = '/2/account'
     key_properties = ['account_id']
@@ -252,9 +199,8 @@ class Account(SingletonStream):
 
 
 class UsageTweets(SingletonStream):
-    """Post-consumption usage for the current project. No config required.
-    Requires a genuine App-only Bearer Token (`bearer_token` config) to
-    actually succeed - `client_credentials`-minted tokens are rejected."""
+    """Post-consumption usage for the current project. Requires a genuine
+    App-only Bearer Token to actually succeed - a minted token is rejected."""
     tap_stream_id = 'usage_tweets'
     path = '/2/usage/tweets'
     key_properties = ['project_id']
@@ -263,7 +209,7 @@ class UsageTweets(SingletonStream):
 
 
 class UsageCredits(SingletonStream):
-    """Pay-as-you-go credit balance for the current project. No config required."""
+    """Pay-as-you-go credit balance for the current project."""
     tap_stream_id = 'usage_credits'
     path = '/2/usage/credits'
     key_properties = []
@@ -271,7 +217,7 @@ class UsageCredits(SingletonStream):
 
 
 class PersonalizedTrends(SingletonListStream):
-    """Trending topics personalized for the authenticated user. No config required."""
+    """Trending topics personalized for the authenticated user."""
     tap_stream_id = 'personalized_trends'
     path = '/2/users/personalized_trends'
     key_properties = ['trend_name']
@@ -280,7 +226,7 @@ class PersonalizedTrends(SingletonListStream):
 
 
 class UserRepostsOfMe(SingletonListStream):
-    """Posts of the authenticated user that have been reposted by others. No config required."""
+    """Posts of the authenticated user that have been reposted by others."""
     tap_stream_id = 'user_reposts_of_me'
     path = '/2/users/reposts_of_me'
     key_properties = ['id']
@@ -289,9 +235,8 @@ class UserRepostsOfMe(SingletonListStream):
 
 
 class Bots(SingletonListStream):
-    """Bot accounts associated with this app. No config required. Requires a
-    genuine App-only Bearer Token (`bearer_token` config) to actually
-    succeed - `client_credentials`-minted tokens are rejected."""
+    """Bot accounts associated with this app. Requires a genuine App-only
+    Bearer Token to actually succeed - a minted token is rejected."""
     tap_stream_id = 'bots'
     path = '/2/bots'
     key_properties = ['id']
@@ -300,7 +245,7 @@ class Bots(SingletonListStream):
 
 
 class Webhooks(SingletonListStream):
-    """Webhooks registered for this app. No config required."""
+    """Webhooks registered for this app."""
     tap_stream_id = 'webhooks'
     path = '/2/webhooks'
     key_properties = ['id']
@@ -310,8 +255,7 @@ class Webhooks(SingletonListStream):
 
 # ---- Children of users_me (parent id = authenticated user's id) --------
 class UserTweets(ParentStream):
-    """Posts authored by the authenticated user. INCREMENTAL on `created_at`.
-    No config required (parent id comes from `users_me`)."""
+    """Posts authored by the authenticated user. INCREMENTAL on `created_at`."""
     tap_stream_id = 'user_tweets'
     path = '/2/users/{id}/tweets'
     key_properties = ['id']
@@ -323,8 +267,7 @@ class UserTweets(ParentStream):
 
 
 class UserMentions(ParentStream):
-    """Posts mentioning the authenticated user. INCREMENTAL on `created_at`.
-    No config required."""
+    """Posts mentioning the authenticated user. INCREMENTAL on `created_at`."""
     tap_stream_id = 'user_mentions'
     path = '/2/users/{id}/mentions'
     key_properties = ['id']
@@ -336,7 +279,7 @@ class UserMentions(ParentStream):
 
 
 class UserLikedTweets(ParentStream):
-    """Posts liked by the authenticated user. No config required."""
+    """Posts liked by the authenticated user."""
     tap_stream_id = 'user_liked_tweets'
     path = '/2/users/{id}/liked_tweets'
     key_properties = ['id']
@@ -346,7 +289,7 @@ class UserLikedTweets(ParentStream):
 
 
 class UserBookmarks(ParentStream):
-    """Posts bookmarked by the authenticated user. No config required."""
+    """Posts bookmarked by the authenticated user."""
     tap_stream_id = 'user_bookmarks'
     path = '/2/users/{id}/bookmarks'
     key_properties = ['id']
@@ -356,7 +299,7 @@ class UserBookmarks(ParentStream):
 
 
 class UserFollowers(ParentStream):
-    """Users following the authenticated user. No config required."""
+    """Users following the authenticated user."""
     tap_stream_id = 'user_followers'
     path = '/2/users/{id}/followers'
     key_properties = ['id']
@@ -366,7 +309,7 @@ class UserFollowers(ParentStream):
 
 
 class UserFollowing(ParentStream):
-    """Users the authenticated user follows. No config required."""
+    """Users the authenticated user follows."""
     tap_stream_id = 'user_following'
     path = '/2/users/{id}/following'
     key_properties = ['id']
@@ -376,7 +319,7 @@ class UserFollowing(ParentStream):
 
 
 class UserBlocking(ParentStream):
-    """Users blocked by the authenticated user. No config required."""
+    """Users blocked by the authenticated user."""
     tap_stream_id = 'user_blocking'
     path = '/2/users/{id}/blocking'
     key_properties = ['id']
@@ -386,7 +329,7 @@ class UserBlocking(ParentStream):
 
 
 class UserMuting(ParentStream):
-    """Users muted by the authenticated user. No config required."""
+    """Users muted by the authenticated user."""
     tap_stream_id = 'user_muting'
     path = '/2/users/{id}/muting'
     key_properties = ['id']
@@ -396,7 +339,7 @@ class UserMuting(ParentStream):
 
 
 class UserOwnedLists(ParentStream):
-    """Lists owned by the authenticated user. No config required."""
+    """Lists owned by the authenticated user."""
     tap_stream_id = 'user_owned_lists'
     path = '/2/users/{id}/owned_lists'
     key_properties = ['id']
@@ -406,7 +349,7 @@ class UserOwnedLists(ParentStream):
 
 
 class UserPinnedLists(ParentStream):
-    """Lists pinned by the authenticated user. No config required."""
+    """Lists pinned by the authenticated user."""
     tap_stream_id = 'user_pinned_lists'
     path = '/2/users/{id}/pinned_lists'
     key_properties = ['id']
@@ -417,7 +360,7 @@ class UserPinnedLists(ParentStream):
 
 
 class UserListMemberships(ParentStream):
-    """Lists the authenticated user is a member of. No config required."""
+    """Lists the authenticated user is a member of."""
     tap_stream_id = 'user_list_memberships'
     path = '/2/users/{id}/list_memberships'
     key_properties = ['id']
@@ -427,7 +370,7 @@ class UserListMemberships(ParentStream):
 
 
 class UserFollowedLists(ParentStream):
-    """Lists the authenticated user follows. No config required."""
+    """Lists the authenticated user follows."""
     tap_stream_id = 'user_followed_lists'
     path = '/2/users/{id}/followed_lists'
     key_properties = ['id']
@@ -437,7 +380,7 @@ class UserFollowedLists(ParentStream):
 
 
 class DmEvents(ParentStream):
-    """Direct Message events visible to the authenticated user. No config required."""
+    """Direct Message events visible to the authenticated user."""
     tap_stream_id = 'dm_events'
     path = '/2/dm_events'
     key_properties = ['id']
@@ -447,8 +390,7 @@ class DmEvents(ParentStream):
 
 
 class UserAffiliates(ParentStream):
-    """Accounts affiliated with the authenticated user (e.g. represented brands).
-    No config required."""
+    """Accounts affiliated with the authenticated user (e.g. represented brands)."""
     tap_stream_id = 'user_affiliates'
     path = '/2/users/{id}/affiliates'
     key_properties = ['id']
@@ -458,7 +400,7 @@ class UserAffiliates(ParentStream):
 
 
 class UserBookmarkFolders(ParentStream):
-    """Bookmark folders owned by the authenticated user. No config required."""
+    """Bookmark folders owned by the authenticated user."""
     tap_stream_id = 'user_bookmark_folders'
     path = '/2/users/{id}/bookmarks/folders'
     key_properties = ['id']
@@ -469,7 +411,7 @@ class UserBookmarkFolders(ParentStream):
 
 class UserHomeTimeline(ParentStream):
     """The authenticated user's reverse-chronological home timeline.
-    INCREMENTAL on `created_at`. No config required."""
+    INCREMENTAL on `created_at`."""
     tap_stream_id = 'user_home_timeline'
     path = '/2/users/{id}/timelines/reverse_chronological'
     key_properties = ['id']
@@ -480,34 +422,10 @@ class UserHomeTimeline(ParentStream):
     params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
 
-# ---- Config-driven batch lookups (no parent needed) ---------------------
-class UsersByIds(ConfigIdsStream):
-    """Users looked up by id. OPTIONAL config `user_ids` (comma-separated) -
-    skipped with a warning if unset."""
-    tap_stream_id = 'users_by_ids'
-    path = '/2/users'
-    key_properties = ['id']
-    source_key = 'user_ids'
-    id_query_param = 'ids'
-    auth = 'user'
-    params = {'user.fields': USER_FIELDS}
-
-
-class UsersByUsernames(ConfigIdsStream):
-    """Users looked up by username. OPTIONAL config `usernames`
-    (comma-separated) - skipped with a warning if unset."""
-    tap_stream_id = 'users_by_usernames'
-    path = '/2/users/by'
-    key_properties = ['id']
-    source_key = 'usernames'
-    id_query_param = 'usernames'
-    auth = 'user'
-    params = {'user.fields': USER_FIELDS}
-
-
+# ---- Batch lookups (no parent needed) ------------------------------------
 class TweetsByIds(ConfigIdsStream):
-    """Posts looked up by id. OPTIONAL config `tweet_ids` (comma-separated) -
-    skipped with a warning if unset."""
+    """Posts looked up by id, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
     tap_stream_id = 'tweets_by_ids'
     path = '/2/tweets'
     key_properties = ['id']
@@ -518,8 +436,8 @@ class TweetsByIds(ConfigIdsStream):
 
 
 class SpacesByIds(ConfigIdsStream):
-    """Spaces looked up by id. OPTIONAL config `space_ids` (comma-separated) -
-    skipped with a warning if unset."""
+    """Spaces looked up by id, defaulting to the authenticated user's own
+    spaces (from `spaces_by_creator_ids`)."""
     tap_stream_id = 'spaces_by_ids'
     path = '/2/spaces'
     key_properties = ['id']
@@ -530,9 +448,8 @@ class SpacesByIds(ConfigIdsStream):
 
 
 class SpacesByCreatorIds(ConfigIdsSelfDefaultStream):
-    """Spaces created by the given users. OPTIONAL config `creator_ids`
-    (comma-separated) - if unset, defaults to just the authenticated user's
-    own id (never skipped)."""
+    """Spaces created by the given users, defaulting to just the
+    authenticated user."""
     tap_stream_id = 'spaces_by_creator_ids'
     path = '/2/spaces/by/creator_ids'
     key_properties = ['id']
@@ -542,22 +459,9 @@ class SpacesByCreatorIds(ConfigIdsSelfDefaultStream):
     params = {'space.fields': SPACE_FIELDS}
 
 
-class MediaByKeys(ConfigIdsStream):
-    """Media objects looked up by media key. OPTIONAL config `media_keys`
-    (comma-separated) - skipped with a warning if unset."""
-    tap_stream_id = 'media_by_keys'
-    path = '/2/media'
-    key_properties = ['media_key']
-    source_key = 'media_keys'
-    id_query_param = 'media_keys'
-    auth = 'user'
-    params = {'media.fields': MEDIA_FIELDS}
-
-
 class TrendsByWoeid(ConfigLoopMultiStream):
-    """Trending topics for one or more WOEIDs (Where On Earth IDs). OPTIONAL
-    config `woeids` (comma-separated, e.g. `1` for worldwide) - skipped with
-    a warning if unset."""
+    """Trending topics for one or more WOEIDs (Where On Earth IDs), defaulting
+    to worldwide."""
     tap_stream_id = 'trends_by_woeid'
     path = '/2/trends/by/woeid/{id}'
     key_properties = ['trend_name']
@@ -568,24 +472,21 @@ class TrendsByWoeid(ConfigLoopMultiStream):
 
 
 class ComplianceJobs(SingletonListStream):
-    """Batch compliance jobs. OPTIONAL config `compliance_job_type` (default
-    'tweets'; never skipped). Requires a genuine App-only Bearer Token
-    (`bearer_token` config) to actually succeed - `client_credentials`-minted
-    tokens are rejected."""
+    """Batch compliance jobs. Requires a genuine App-only Bearer Token to
+    actually succeed - a minted token is rejected."""
     tap_stream_id = 'compliance_jobs'
     path = '/2/compliance/jobs'
     key_properties = ['id']
     auth = 'app'
     params = {'compliance_job.fields': COMPLIANCE_JOB_FIELDS}
-    required_params = {'type': ('compliance_job_type', 'tweets')}  # (config key, default)
+    required_params = {'type': ('compliance_job_type', 'tweets')}  # (field, default)
 
 
-# ---- Lists (config-driven list_ids; each list_id is its own parent) -----
+# ---- Lists (defaults to the authenticated user's own lists) -------------
 class ListById(ConfigLoopStream):
     """A List's own metadata, looked up by id; also the parent for
-    list_tweets/list_members/list_followers. OPTIONAL config `list_ids`
-    (comma-separated) - skipped (and its children with it) with a warning if
-    unset."""
+    list_tweets/list_members/list_followers. Defaults to the authenticated
+    user's own owned lists (from `user_owned_lists`)."""
     tap_stream_id = 'list_by_id'
     path = '/2/lists/{id}'
     key_properties = ['id']
@@ -595,8 +496,7 @@ class ListById(ConfigLoopStream):
 
 
 class ListTweets(ParentStream):
-    """Posts in a List's timeline. Depends on `list_by_id` (and therefore the
-    same OPTIONAL `list_ids` config)."""
+    """Posts in a List's timeline."""
     tap_stream_id = 'list_tweets'
     path = '/2/lists/{id}/tweets'
     key_properties = ['id']
@@ -606,8 +506,7 @@ class ListTweets(ParentStream):
 
 
 class ListMembers(ParentStream):
-    """Members of a List. Depends on `list_by_id` (and therefore the same
-    OPTIONAL `list_ids` config)."""
+    """Members of a List."""
     tap_stream_id = 'list_members'
     path = '/2/lists/{id}/members'
     key_properties = ['id']
@@ -617,8 +516,7 @@ class ListMembers(ParentStream):
 
 
 class ListFollowers(ParentStream):
-    """Followers of a List. Depends on `list_by_id` (and therefore the same
-    OPTIONAL `list_ids` config)."""
+    """Followers of a List."""
     tap_stream_id = 'list_followers'
     path = '/2/lists/{id}/followers'
     key_properties = ['id']
@@ -627,11 +525,11 @@ class ListFollowers(ParentStream):
     params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
 
-# ---- Spaces (config_loop over space_ids; each id is its own parent) -----
+# ---- Spaces (defaults to the authenticated user's own spaces) -----------
 class SpaceById(ConfigLoopStream):
     """A Space's own metadata, looked up by id; also the parent for
-    space_tweets/space_buyers. OPTIONAL config `space_ids` (comma-separated) -
-    skipped (and its children with it) with a warning if unset."""
+    space_tweets/space_buyers. Defaults to the authenticated user's own
+    spaces (from `spaces_by_creator_ids`)."""
     tap_stream_id = 'space_by_id'
     path = '/2/spaces/{id}'
     key_properties = ['id']
@@ -641,8 +539,7 @@ class SpaceById(ConfigLoopStream):
 
 
 class SpaceTweets(ParentStream):
-    """Posts shared in a Space. Depends on `space_by_id` (and therefore the
-    same OPTIONAL `space_ids` config)."""
+    """Posts shared in a Space."""
     tap_stream_id = 'space_tweets'
     path = '/2/spaces/{id}/tweets'
     key_properties = ['id']
@@ -653,8 +550,7 @@ class SpaceTweets(ParentStream):
 
 
 class SpaceBuyers(ParentStream):
-    """Ticket buyers for a ticketed Space. Depends on `space_by_id` (and
-    therefore the same OPTIONAL `space_ids` config)."""
+    """Ticket buyers for a ticketed Space."""
     tap_stream_id = 'space_buyers'
     path = '/2/spaces/{id}/buyers'
     key_properties = ['id']
@@ -663,56 +559,11 @@ class SpaceBuyers(ParentStream):
     params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
 
-# ---- Broadcasts (config_loop over *_ids, no children) --------------------
-class BroadcastById(ConfigLoopStream):
-    """A live/past broadcast, looked up by id. OPTIONAL config
-    `broadcast_ids` (comma-separated) - skipped with a warning if unset."""
-    tap_stream_id = 'broadcast_by_id'
-    path = '/2/broadcasts/{id}'
-    key_properties = ['id']
-    source_key = 'broadcast_ids'
-    auth = 'user'
-    params = {'broadcast.fields': BROADCAST_FIELDS}
-
-
-class ScheduledBroadcastById(ConfigLoopStream):
-    """A scheduled (upcoming) broadcast, looked up by id. OPTIONAL config
-    `scheduled_broadcast_ids` (comma-separated) - skipped with a warning if
-    unset."""
-    tap_stream_id = 'scheduled_broadcast_by_id'
-    path = '/2/broadcasts/scheduled/{id}'
-    key_properties = ['id']
-    source_key = 'scheduled_broadcast_ids'
-    auth = 'user'
-
-
-# ---- Communities / News (config_loop over *_ids, no children) -----------
-class CommunityById(ConfigLoopStream):
-    """A Community, looked up by id. OPTIONAL config `community_ids`
-    (comma-separated) - skipped with a warning if unset."""
-    tap_stream_id = 'community_by_id'
-    path = '/2/communities/{id}'
-    key_properties = ['id']
-    source_key = 'community_ids'
-    auth = 'user'
-    params = {'community.fields': COMMUNITY_FIELDS}
-
-
-class NewsById(ConfigLoopStream):
-    """A news story, looked up by id. OPTIONAL config `news_ids`
-    (comma-separated) - skipped with a warning if unset."""
-    tap_stream_id = 'news_by_id'
-    path = '/2/news/{id}'
-    key_properties = ['id']
-    source_key = 'news_ids'
-    auth = 'user'
-    params = {'news.fields': NEWS_FIELDS}
-
-
-# ---- Per-post engagement lookups (config_loop_multi over tweet_ids) -----
+# ---- Per-post engagement lookups (default to the authenticated user's own
+# posts via user_tweets) ---------------------------------------------------
 class PostLikingUsers(ConfigLoopMultiStream):
-    """Users who liked a Post. OPTIONAL config `tweet_ids` (comma-separated) -
-    skipped with a warning if unset."""
+    """Users who liked a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
     tap_stream_id = 'post_liking_users'
     path = '/2/tweets/{id}/liking_users'
     key_properties = ['id']
@@ -722,8 +573,8 @@ class PostLikingUsers(ConfigLoopMultiStream):
 
 
 class PostQuoteTweets(ConfigLoopMultiStream):
-    """Quote Posts of a Post. OPTIONAL config `tweet_ids` (comma-separated) -
-    skipped with a warning if unset."""
+    """Quote Posts of a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
     tap_stream_id = 'post_quote_tweets'
     path = '/2/tweets/{id}/quote_tweets'
     key_properties = ['id']
@@ -733,8 +584,8 @@ class PostQuoteTweets(ConfigLoopMultiStream):
 
 
 class PostRepostedBy(ConfigLoopMultiStream):
-    """Users who reposted a Post. OPTIONAL config `tweet_ids`
-    (comma-separated) - skipped with a warning if unset."""
+    """Users who reposted a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
     tap_stream_id = 'post_reposted_by'
     path = '/2/tweets/{id}/retweeted_by'
     key_properties = ['id']
@@ -744,8 +595,8 @@ class PostRepostedBy(ConfigLoopMultiStream):
 
 
 class PostReposts(ConfigLoopMultiStream):
-    """Reposts of a Post. OPTIONAL config `tweet_ids` (comma-separated) -
-    skipped with a warning if unset."""
+    """Reposts of a Post, defaulting to the authenticated user's own posts
+    (from `user_tweets`)."""
     tap_stream_id = 'post_reposts'
     path = '/2/tweets/{id}/retweets'
     key_properties = ['id']
@@ -754,22 +605,11 @@ class PostReposts(ConfigLoopMultiStream):
     params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
 
-# ---- Search / query-driven streams (required config query params) -------
-class UsersSearch(SearchStream):
-    """Search for users. REQUIRED config `users_search_query` (no default) -
-    skipped with a warning if unset."""
-    tap_stream_id = 'users_search'
-    path = '/2/users/search'
-    key_properties = ['id']
-    auth = 'user'
-    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
-    required_params = {'query': ('users_search_query', None)}
-
-
+# ---- Search / query-driven streams -----------------------------------
 class PostSearchRecent(SearchStream):
-    """Search Posts from the last 7 days. REQUIRED config `post_search_query`
-    (no default) - skipped with a warning if unset. INCREMENTAL on
-    `created_at`, bookmarked by the resolved query text."""
+    """Search Posts from the last 7 days, defaulting to the authenticated
+    user's own posts. INCREMENTAL on `created_at`, bookmarked by the
+    resolved query text."""
     tap_stream_id = 'post_search_recent'
     path = '/2/tweets/search/recent'
     key_properties = ['id']
@@ -782,9 +622,8 @@ class PostSearchRecent(SearchStream):
 
 class PostSearchAll(SearchStream):
     """Full-archive Post search (needs an elevated/Academic-Research-tier
-    access level). REQUIRED config `post_search_query` (no default) -
-    skipped with a warning if unset. INCREMENTAL on `created_at`, bookmarked
-    by the resolved query text."""
+    access level), defaulting to the authenticated user's own posts.
+    INCREMENTAL on `created_at`, bookmarked by the resolved query text."""
     tap_stream_id = 'post_search_all'
     path = '/2/tweets/search/all'
     key_properties = ['id']
@@ -796,8 +635,8 @@ class PostSearchAll(SearchStream):
 
 
 class PostCountsRecent(SearchStream):
-    """Post volume (last 7 days) matching a query. REQUIRED config
-    `post_search_query` (no default) - skipped with a warning if unset."""
+    """Post volume (last 7 days) matching a query, defaulting to the
+    authenticated user's own posts."""
     tap_stream_id = 'post_counts_recent'
     path = '/2/tweets/counts/recent'
     key_properties = ['start']
@@ -807,10 +646,9 @@ class PostCountsRecent(SearchStream):
 
 
 class PostCountsAll(SearchStream):
-    """Full-archive Post volume matching a query. REQUIRED config
-    `post_search_query` (no default) - skipped with a warning if unset.
-    Requires a genuine App-only Bearer Token (`bearer_token` config) to
-    actually succeed - `client_credentials`-minted tokens are rejected."""
+    """Full-archive Post volume matching a query, defaulting to the
+    authenticated user's own posts. Requires a genuine App-only Bearer Token
+    to actually succeed - a minted token is rejected."""
     tap_stream_id = 'post_counts_all'
     path = '/2/tweets/counts/all'
     key_properties = ['start']
@@ -819,33 +657,9 @@ class PostCountsAll(SearchStream):
     required_params = {'query': ('post_search_query', None)}
 
 
-class CommunitiesSearch(SearchStream):
-    """Search for Communities. REQUIRED config `communities_search_query`
-    (no default) - skipped with a warning if unset."""
-    tap_stream_id = 'communities_search'
-    path = '/2/communities/search'
-    key_properties = ['id']
-    auth = 'user'
-    params = {'community.fields': COMMUNITY_FIELDS}
-    required_params = {'query': ('communities_search_query', None)}
-
-
-class NewsSearch(SearchStream):
-    """Search for news stories. REQUIRED config `news_search_query` (no
-    default) - skipped with a warning if unset."""
-    tap_stream_id = 'news_search'
-    path = '/2/news/search'
-    key_properties = ['id']
-    auth = 'user'
-    paginated = False
-    params = {'news.fields': NEWS_FIELDS}
-    required_params = {'query': ('news_search_query', None)}
-
-
 class CommunityNotesSearchWritten(SearchStream):
     """Community Notes written by (or eligible for) the authenticated
-    account. OPTIONAL config `community_notes_test_mode` (default False;
-    never skipped)."""
+    account."""
     tap_stream_id = 'community_notes_search_written'
     path = '/2/notes/search/notes_written'
     key_properties = ['id']
@@ -855,9 +669,7 @@ class CommunityNotesSearchWritten(SearchStream):
 
 
 class CommunityNotesEligiblePosts(SearchStream):
-    """Posts eligible for a Community Note from the authenticated account.
-    OPTIONAL config `community_notes_test_mode` (default False; never
-    skipped)."""
+    """Posts eligible for a Community Note from the authenticated account."""
     tap_stream_id = 'community_notes_eligible_posts'
     path = '/2/notes/search/posts_eligible_for_notes'
     key_properties = ['id']

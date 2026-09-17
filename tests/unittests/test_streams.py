@@ -15,14 +15,14 @@ from tap_twitter_ads.streams import (
     UserTweets,
     ListById,
     ListTweets,
-    BroadcastById,
+    SpaceById,
     SpacesByCreatorIds,
 )
 
 
 class TestStreamClassHierarchy(unittest.TestCase):
     def test_every_stream_is_a_distinct_class_instance(self):
-        # 56 stream classes registered, one instance each, no accidental sharing.
+        # 46 stream classes registered, one instance each, no accidental sharing.
         classes = {type(s) for s in STREAMS.values()}
         self.assertEqual(len(classes), len(STREAMS))
 
@@ -49,7 +49,7 @@ class TestStreamClassHierarchy(unittest.TestCase):
         # (doing so previously caused those streams to be silently skipped).
         self.assertEqual(UserTweets().parent, 'users_me')
         self.assertIsNone(ListById().parent)
-        self.assertIsNone(BroadcastById().parent)
+        self.assertIsNone(SpaceById().parent)
         self.assertEqual(ListTweets().parent, 'list_by_id')
 
     def test_schema_file_always_equals_tap_stream_id(self):

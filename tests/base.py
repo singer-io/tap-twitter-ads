@@ -48,23 +48,20 @@ class TwitterAds(unittest.TestCase):
         }
 
     def get_properties(self, original: bool = True):
-        """Configuration properties required for the tap. Optional
-        config-driven streams (user_ids/usernames/tweet_ids/space_ids/
-        list_ids/etc.) are sourced from env vars so CI can point them at
-        real ids/queries the test account has access to - see README.md's
-        "Configuration Reference" for which stream(s) each field activates."""
+        """Configuration properties required for the tap. Only 5 fields are
+        ever REQUIRED (start_date/client_id/client_secret/access_token/
+        refresh_token) - every other id-list/query field below is an OPTIONAL
+        override of a self-default the tap resolves from the authenticated
+        user's own data (see streams.py's module docstring); set via env vars
+        here only so CI can point them at specific ids/queries when desired."""
 
         return_value = {
             "start_date": "2020-01-01T00:00:00Z",
             "page_size": self.PAGE_SIZE,
-            "user_ids": os.getenv("TAP_TWITTER_ADS_USER_IDS"),
-            "usernames": os.getenv("TAP_TWITTER_ADS_USERNAMES"),
             "tweet_ids": os.getenv("TAP_TWITTER_ADS_TWEET_IDS"),
             "space_ids": os.getenv("TAP_TWITTER_ADS_SPACE_IDS"),
             "list_ids": os.getenv("TAP_TWITTER_ADS_LIST_IDS"),
-            "media_keys": os.getenv("TAP_TWITTER_ADS_MEDIA_KEYS"),
-            "woeids": os.getenv("TAP_TWITTER_ADS_WOEIDS", "1"),
-            "users_search_query": os.getenv("TAP_TWITTER_ADS_USERS_SEARCH_QUERY"),
+            "woeids": os.getenv("TAP_TWITTER_ADS_WOEIDS"),
             "post_search_query": os.getenv("TAP_TWITTER_ADS_POST_SEARCH_QUERY"),
         }
         if original:
@@ -139,12 +136,9 @@ class TwitterAds(unittest.TestCase):
             "user_affiliates": full_table("id", parent_stream="users_me"),
             "dm_events": full_table("id", parent_stream="users_me"),
             # ---- Config-driven batch lookups (config_ids) ----
-            "users_by_ids": full_table("id"),
-            "users_by_usernames": full_table("id"),
             "tweets_by_ids": full_table("id"),
             "spaces_by_ids": full_table("id"),
             "spaces_by_creator_ids": full_table("id"),
-            "media_by_keys": full_table("media_key"),
             # ---- Config-driven loops (config_loop / config_loop_multi) ----
             "trends_by_woeid": full_table("trend_name"),
             "compliance_jobs": full_table("id"),
@@ -155,23 +149,16 @@ class TwitterAds(unittest.TestCase):
             "space_by_id": full_table("id"),
             "space_tweets": full_table("id", parent_stream="space_by_id"),
             "space_buyers": full_table("id", parent_stream="space_by_id"),
-            "broadcast_by_id": full_table("id"),
-            "scheduled_broadcast_by_id": full_table("id"),
-            "community_by_id": full_table("id"),
-            "news_by_id": full_table("id"),
             # ---- Per-post engagement lookups (config_loop_multi over tweet_ids) ----
             "post_liking_users": full_table("id"),
             "post_quote_tweets": full_table("id"),
             "post_reposted_by": full_table("id"),
             "post_reposts": full_table("id"),
             # ---- Search / query-driven streams ----
-            "users_search": full_table("id"),
             "post_search_recent": incremental("id"),
             "post_search_all": incremental("id"),
             "post_counts_recent": full_table("start"),
             "post_counts_all": full_table("start"),
-            "communities_search": full_table("id"),
-            "news_search": full_table("id"),
             "community_notes_search_written": full_table("id"),
             "community_notes_eligible_posts": full_table("id"),
         }

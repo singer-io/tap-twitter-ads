@@ -27,13 +27,8 @@ Two OAuth 2.0 mechanisms are used, depending on what each endpoint supports:
 
 ## Configuration Reference
 
-`config.json` fields fall into two groups: fields that are always required,
-and optional fields that each activate a specific set of streams (see
-`config.json.example`). This mirrors the config-field reference documented
-in the `streams.py` module docstring - if you change what a field controls,
-update both.
-
-**Always required** (every sync needs these regardless of which streams are selected):
+Only **5 fields are ever required** - the tap runs fully with just these
+(see `config.json.example`):
 
 | Field | Purpose |
 |---|---|
@@ -43,34 +38,29 @@ update both.
 | `access_token` | OAuth 2.0 user-context access token |
 | `refresh_token` | OAuth 2.0 user-context refresh token (rotated + persisted on every use) |
 
-**Optional - id-list fields** (comma-separated string or JSON array; the
-stream(s) listed are skipped with a logged warning, never an error, if the
-field is unset):
+Every other config field is a purely **optional override** of a self-default
+the tap resolves automatically from the authenticated user's own data (via
+`users_me` and its children) - set one only to look up someone/something
+else instead of the authenticated user's own data. This mirrors the
+config-field reference documented in the `streams.py` module docstring - if
+you change what a field controls, update both.
 
-| Field | Activates |
-|---|---|
-| `user_ids` | `users_by_ids` |
-| `usernames` | `users_by_usernames` |
-| `tweet_ids` | `tweets_by_ids`, `post_liking_users`, `post_quote_tweets`, `post_reposted_by`, `post_reposts` |
-| `space_ids` | `spaces_by_ids`, `space_by_id` (+ children `space_tweets`, `space_buyers`) |
-| `creator_ids` | `spaces_by_creator_ids` (falls back to the authenticated user's own id if unset - never skipped) |
-| `list_ids` | `list_by_id` (+ children `list_tweets`, `list_members`, `list_followers`) |
-| `media_keys` | `media_by_keys` |
-| `broadcast_ids` | `broadcast_by_id` |
-| `scheduled_broadcast_ids` | `scheduled_broadcast_by_id` |
-| `community_ids` | `community_by_id` |
-| `news_ids` | `news_by_id` |
-| `woeids` | `trends_by_woeid` |
+**Optional - id-list fields** (comma-separated string or JSON array):
+
+| Field | Activates | Default when unset |
+|---|---|---|
+| `tweet_ids` | `tweets_by_ids`, `post_liking_users`, `post_quote_tweets`, `post_reposted_by`, `post_reposts` | the authenticated user's own post ids (from `user_tweets`) |
+| `space_ids` | `spaces_by_ids`, `space_by_id` (+ children `space_tweets`, `space_buyers`) | the authenticated user's own space ids (from `spaces_by_creator_ids`) |
+| `creator_ids` | `spaces_by_creator_ids` | the authenticated user's own id |
+| `list_ids` | `list_by_id` (+ children `list_tweets`, `list_members`, `list_followers`) | the authenticated user's own owned list ids (from `user_owned_lists`) |
+| `woeids` | `trends_by_woeid` | `'1'` (worldwide) |
 
 **Optional - single-value fields**:
 
 | Field | Activates | Default if unset |
 |---|---|---|
 | `compliance_job_type` | `compliance_jobs` | `tweets` (stream still runs) |
-| `users_search_query` | `users_search` | none - **required for that stream**, skipped without it |
-| `post_search_query` | `post_search_recent`, `post_search_all`, `post_counts_recent`, `post_counts_all` | none - **required for those streams**, skipped without it |
-| `communities_search_query` | `communities_search` | none - **required for that stream**, skipped without it |
-| `news_search_query` | `news_search` | none - **required for that stream**, skipped without it |
+| `post_search_query` | `post_search_recent`, `post_search_all`, `post_counts_recent`, `post_counts_all` | `from:<authenticated username>` (the user's own posts) |
 | `community_notes_test_mode` | `community_notes_search_written`, `community_notes_eligible_posts` | `false` (streams still run) |
 | `bearer_token` | A genuine App-only Bearer Token, used as-is (no minting attempted) by every `auth='app'` stream: `usage_tweets`, `compliance_jobs`, `bots`, `post_counts_all` | none - those 4 streams fail clearly without it (see `client.py`) |
 | `page_size` | Tunes pagination page size for ALL streams | `100` |
@@ -78,9 +68,12 @@ field is unset):
 
 ## Streams
 
-56 streams are implemented, covering every GET endpoint in the X API v2
-OpenAPI spec (`docs.x.com/openapi.json`) that supports OAuth 2.0 and fits a
-batch-poll Singer tap model (see Exclusions below).
+46 streams are implemented, covering every GET endpoint in the X API v2
+OpenAPI spec (`docs.x.com/openapi.json`) that supports OAuth 2.0, fits a
+batch-poll Singer tap model, and has either no extra id/query dependency or
+a sensible self-default derived from the authenticated user's own data (see
+Exclusions below for endpoints that need an arbitrary external id/query with
+no such default and were removed).
 
 **Authenticated-user streams** (parent `users_me`, no config needed):
 
@@ -111,45 +104,35 @@ batch-poll Singer tap model (see Exclusions below).
 | `user_affiliates` | `GET /2/users/{id}/affiliates` | FULL_TABLE | `tweet.read`, `users.read` |
 | `dm_events` | `GET /2/dm_events` | FULL_TABLE | `dm.read` |
 
-**Config-driven batch lookups** (no parent needed - `config_ids`):
+**Config-driven batch lookups** (no parent needed - `config_ids`; each
+self-defaults as noted above):
 
 | Stream | Endpoint | Config field |
 |---|---|---|
-| `users_by_ids` | `GET /2/users` | `user_ids` |
-| `users_by_usernames` | `GET /2/users/by` | `usernames` |
 | `tweets_by_ids` | `GET /2/tweets` | `tweet_ids` |
 | `spaces_by_ids` | `GET /2/spaces` | `space_ids` |
-| `spaces_by_creator_ids` | `GET /2/spaces/by/creator_ids` | `creator_ids` (defaults to the authenticated user) |
-| `media_by_keys` | `GET /2/media` | `media_keys` |
+| `spaces_by_creator_ids` | `GET /2/spaces/by/creator_ids` | `creator_ids` |
 
-**Config-driven parent loops** (each configured id is its own record *and* a
+**Config-driven parent loops** (each resolved id is its own record *and* a
 parent for its children):
 
 | Parent | Endpoint | Config field | Children |
 |---|---|---|---|
 | `list_by_id` | `GET /2/lists/{id}` | `list_ids` | `list_tweets`, `list_members`, `list_followers` |
 | `space_by_id` | `GET /2/spaces/{id}` | `space_ids` | `space_tweets`, `space_buyers` |
-| `broadcast_by_id` | `GET /2/broadcasts/{id}` | `broadcast_ids` | - |
-| `scheduled_broadcast_by_id` | `GET /2/broadcasts/scheduled/{id}` | `scheduled_broadcast_ids` | - |
-| `community_by_id` | `GET /2/communities/{id}` | `community_ids` | - |
-| `news_by_id` | `GET /2/news/{id}` | `news_ids` | - |
 | `trends_by_woeid` | `GET /2/trends/by/woeid/{id}` | `woeids` | - |
 
 **Per-post engagement lookups** (config `tweet_ids`, paginated):
 `post_liking_users`, `post_quote_tweets`, `post_reposted_by`, `post_reposts`.
 
-**Search / query-driven streams** (skipped with a clear warning if their
-required config field isn't set):
+**Search / query-driven streams**:
 
-| Stream | Endpoint | Required config |
+| Stream | Endpoint | Config |
 |---|---|---|
-| `users_search` | `GET /2/users/search` | `users_search_query` |
 | `post_search_recent` | `GET /2/tweets/search/recent` | `post_search_query` (INCREMENTAL) |
 | `post_search_all` | `GET /2/tweets/search/all` | `post_search_query` (INCREMENTAL, needs elevated access) |
 | `post_counts_recent` | `GET /2/tweets/counts/recent` | `post_search_query` |
 | `post_counts_all` | `GET /2/tweets/counts/all` | `post_search_query` (App-only Bearer only) |
-| `communities_search` | `GET /2/communities/search` | `communities_search_query` |
-| `news_search` | `GET /2/news/search` | `news_search_query` |
 | `community_notes_search_written` | `GET /2/notes/search/notes_written` | `community_notes_test_mode` (defaults `false`) |
 | `community_notes_eligible_posts` | `GET /2/notes/search/posts_eligible_for_notes` | `community_notes_test_mode` (defaults `false`) |
 | `compliance_jobs` | `GET /2/compliance/jobs` | `compliance_job_type` (defaults `tweets`, App-only Bearer only) |
@@ -160,16 +143,24 @@ is an X API access-tier limitation, not a tap defect.
 
 Streams whose endpoint doesn't support the OAuth 2.0 scopes your app was
 granted will fail clearly (HTTP 403) without affecting other streams - one
-stream's failure never discards data already synced by others, and a
-required-but-unconfigured stream is skipped with an explicit warning
-(never silently).
+stream's failure never discards data already synced by others.
 
-**Excluded by design** (not REST/batch-poll compatible, or not a data
-endpoint): persistent streaming connections (filtered/sampled/firehose
-streams, 17 endpoints), Webhooks/Account Activity/Activity subscription
-*management* (create/delete/validate - `webhooks`/`GET /2/webhooks` itself
-IS included as a read), Chat (E2EE messaging), Broadcast chat, and media
-upload/status/analytics endpoints (binary uploads, not pollable data).
+**Excluded by design**:
+- Not REST/batch-poll compatible, or not a data endpoint: persistent
+  streaming connections (filtered/sampled/firehose streams, 17 endpoints),
+  Webhooks/Account Activity/Activity subscription *management*
+  (create/delete/validate - `webhooks`/`GET /2/webhooks` itself IS included
+  as a read), Chat (E2EE messaging), Broadcast chat, and media
+  upload/status/analytics endpoints (binary uploads, not pollable data).
+- Removed because they need an arbitrary external id/query with no
+  derivable self-default anywhere in this tap (i.e. no config beyond the 5
+  required fields could ever make them return data): `users_by_ids`
+  (`user_ids`), `users_by_usernames` (`usernames`), `media_by_keys`
+  (`media_keys`), `broadcast_by_id` (`broadcast_ids`),
+  `scheduled_broadcast_by_id` (`scheduled_broadcast_ids`), `community_by_id`
+  (`community_ids`), `news_by_id` (`news_ids`), `users_search`
+  (`users_search_query`), `communities_search` (`communities_search_query`),
+  `news_search` (`news_search_query`).
 
 ## Quick Start
 

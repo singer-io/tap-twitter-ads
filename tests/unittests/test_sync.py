@@ -6,7 +6,8 @@ from unittest import mock
 
 from tap_twitter_ads.discover import discover
 from tap_twitter_ads.client import XApiClient
-from tap_twitter_ads.sync import sync
+from tap_twitter_ads.sync import sync, get_selected_streams
+from tap_twitter_ads.streams import STREAMS
 
 
 def select_all_streams(catalog, only=None):
@@ -171,15 +172,15 @@ class TestSyncErrorIsolation(unittest.TestCase):
 class TestSyncConfigIdsAndLoop(unittest.TestCase):
     @mock.patch('tap_twitter_ads.client.requests.Session.post')
     @mock.patch('tap_twitter_ads.client.requests.Session.get')
-    def test_users_by_ids_batch_lookup(self, mocked_get, mocked_post):
+    def test_tweets_by_ids_batch_lookup_with_configured_ids(self, mocked_get, mocked_post):
         mock_app_token(mocked_post)
         resp = mock.Mock()
         resp.status_code = 200
-        resp.json.return_value = {'data': [{'id': '1', 'username': 'a'}, {'id': '2', 'username': 'b'}]}
+        resp.json.return_value = {'data': [{'id': '1', 'text': 'a'}, {'id': '2', 'text': 'b'}]}
         mocked_get.return_value = resp
 
-        config = dict(CONFIG, user_ids='1,2')
-        catalog = select_all_streams(discover(), only=['users_by_ids'])
+        config = dict(CONFIG, tweet_ids='1,2')
+        catalog = select_all_streams(discover(), only=['tweets_by_ids'])
         client = XApiClient(config)
         state = {}
 
@@ -187,13 +188,20 @@ class TestSyncConfigIdsAndLoop(unittest.TestCase):
         with redirect_stdout(buf):
             sync(client, config, catalog, state)
         messages = parse_singer_output(buf.getvalue())
-        record_msgs = [m for m in messages if m['type'] == 'RECORD' and m['stream'] == 'users_by_ids']
+        record_msgs = [m for m in messages if m['type'] == 'RECORD' and m['stream'] == 'tweets_by_ids']
         self.assertEqual(len(record_msgs), 2)
         self.assertEqual(mocked_get.call_args.kwargs['params']['ids'], '1,2')
 
-    def test_users_by_ids_skipped_when_not_configured(self):
-        with mock.patch('tap_twitter_ads.client.requests.Session.get') as mocked_get:
-            catalog = select_all_streams(discover(), only=['users_by_ids'])
+    def test_tweets_by_ids_skipped_when_not_configured_and_no_tweets_exist(self):
+        with mock.patch('tap_twitter_ads.client.requests.Session.post') as mocked_post, \
+             mock.patch('tap_twitter_ads.client.requests.Session.get') as mocked_get:
+            mock_app_token(mocked_post)
+            mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: mock.Mock(
+                status_code=200,
+                json=lambda: {'data': {'id': 'u1'}} if url.endswith('/2/users/me')
+                else {'data': [], 'meta': {}})
+
+            catalog = select_all_streams(discover(), only=['tweets_by_ids'])
             client = XApiClient(CONFIG)
             state = {}
 
@@ -203,7 +211,40 @@ class TestSyncConfigIdsAndLoop(unittest.TestCase):
             messages = parse_singer_output(buf.getvalue())
             record_msgs = [m for m in messages if m['type'] == 'RECORD']
             self.assertEqual(len(record_msgs), 0)
-            mocked_get.assert_not_called()
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_tweets_by_ids_defaults_to_users_own_tweet_ids(self, mocked_get, mocked_post):
+        # Regression: tweet_ids/list_ids/space_ids/woeids/post_search_query are
+        # all OPTIONAL self-defaulting fields now - the tap must produce data
+        # for their dependent streams using only the 5 required config fields.
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'me'}})
+            if url.endswith('/2/users/u1/tweets'):
+                return mock.Mock(status_code=200, json=lambda: {
+                    'data': [{'id': '9', 'text': 'hi', 'created_at': '2023-01-01T00:00:00Z'}], 'meta': {}})
+            if url.endswith('/2/tweets'):
+                self.assertEqual(params['ids'], '9')
+                return mock.Mock(status_code=200, json=lambda: {'data': [{'id': '9', 'text': 'hi'}]})
+            raise AssertionError('Unexpected URL: {}'.format(url))
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        catalog = select_all_streams(discover(), only=['tweets_by_ids'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD' and m['stream'] == 'tweets_by_ids']
+        self.assertEqual(len(record_msgs), 1)
+        # user_tweets itself wasn't selected, so it must not have emitted a record
+        self.assertEqual(len([m for m in messages if m['type'] == 'RECORD' and m['stream'] == 'user_tweets']), 0)
 
     @mock.patch('tap_twitter_ads.client.requests.Session.post')
     @mock.patch('tap_twitter_ads.client.requests.Session.get')
@@ -237,42 +278,54 @@ class TestSyncConfigIdsAndLoop(unittest.TestCase):
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'list_tweets']), 1)
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'list_members']), 1)
 
-    def test_list_children_do_not_silently_no_op_when_list_ids_unconfigured(self):
-        with mock.patch('tap_twitter_ads.client.requests.Session.get') as mocked_get:
-            catalog = select_all_streams(discover(), only=['list_tweets', 'list_members'])
-            client = XApiClient(CONFIG)
-            state = {}
+    @mock.patch('tap_twitter_ads.sync.LOGGER')
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_list_children_do_not_silently_no_op_when_owned_lists_is_empty(self, mocked_get, mocked_post, mocked_logger):
+        # list_ids now self-defaults from user_owned_lists, so a real (but
+        # empty) fetch happens before the children are skipped - they must
+        # still log an explicit SKIPPED warning, never silently no-op.
+        mock_app_token(mocked_post)
 
-            buf = io.StringIO()
-            with self.assertLogs('root', level='WARNING') as log_ctx:
-                with redirect_stdout(buf):
-                    sync(client, CONFIG, catalog, state)
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'me'}})
+            if url.endswith('/2/users/u1/owned_lists'):
+                return mock.Mock(status_code=200, json=lambda: {'data': [], 'meta': {}})
+            raise AssertionError('Unexpected URL: {}'.format(url))
 
-            self.assertTrue(any('list_tweets' in line and 'SKIPPED' in line for line in log_ctx.output))
-            self.assertTrue(any('list_members' in line and 'SKIPPED' in line for line in log_ctx.output))
-            mocked_get.assert_not_called()
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
 
-    def test_standalone_config_loop_stream_without_children_is_not_silently_skipped(self):
-        """Regression test: a `config_loop` stream with NO registered children
-        (e.g. `broadcast_by_id`, `community_by_id`) must still be dispatched
-        and log an explicit SKIPPED warning when unconfigured - it must not
-        be mistaken for a 'child' stream (whose `.parent` is truthy) and
-        silently dropped from the standalone-stream loop."""
-        with mock.patch('tap_twitter_ads.client.requests.Session.get') as mocked_get:
-            catalog = select_all_streams(discover(), only=['broadcast_by_id', 'community_by_id', 'news_by_id'])
-            client = XApiClient(CONFIG)
-            state = {}
+        catalog = select_all_streams(discover(), only=['list_tweets', 'list_members'])
+        client = XApiClient(CONFIG)
+        state = {}
 
-            buf = io.StringIO()
-            with self.assertLogs('root', level='WARNING') as log_ctx:
-                with redirect_stdout(buf):
-                    sync(client, CONFIG, catalog, state)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
 
-            for stream_name in ('broadcast_by_id', 'community_by_id', 'news_by_id'):
-                self.assertTrue(
-                    any(stream_name in line and 'SKIPPED' in line for line in log_ctx.output),
-                    'expected a SKIPPED warning for {}'.format(stream_name))
-            mocked_get.assert_not_called()
+        warning_calls = [str(call) for call in mocked_logger.warning.call_args_list]
+        self.assertTrue(any('list_tweets' in c and 'SKIPPED' in c for c in warning_calls))
+        self.assertTrue(any('list_members' in c and 'SKIPPED' in c for c in warning_calls))
+
+    def test_all_remaining_config_ids_and_config_loop_streams_have_self_defaults(self):
+        """Every `config_ids`/`config_ids_self_default`/`config_loop`/
+        `config_loop_multi` stream remaining in the tap (after removing the
+        streams with no derivable id source - see streams.py's module
+        docstring) resolves without any extra config beyond the 5 required
+        fields. This guards against silently reintroducing a stream that
+        needs config with no self-default (which would need a SKIPPED-with-
+        zero-API-calls regression test like the old media_by_keys/broadcast_
+        by_id ones this replaced)."""
+        no_default_source_types = ('config_ids', 'config_ids_self_default', 'config_loop', 'config_loop_multi')
+        for name, stream in STREAMS.items():
+            if stream.source_type in no_default_source_types:
+                with self.subTest(stream=name):
+                    self.assertIn(stream.source_key, (
+                        'tweet_ids', 'space_ids', 'creator_ids', 'list_ids', 'woeids'),
+                        '{} has source_key {!r} with no known self-default - add one or a '
+                        'dedicated SKIPPED-with-zero-API-calls regression test'.format(
+                            name, stream.source_key))
 
 
 class TestSyncSingletonListAndConfigLoopMulti(unittest.TestCase):
@@ -341,25 +394,30 @@ class TestSyncSingletonListAndConfigLoopMulti(unittest.TestCase):
 
 
 class TestSyncSearchStreams(unittest.TestCase):
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
     @mock.patch('tap_twitter_ads.client.requests.Session.get')
-    def test_search_skipped_when_required_query_not_configured(self, mocked_get):
-        catalog = select_all_streams(discover(), only=['users_search'])
+    def test_post_search_recent_skipped_when_users_me_fails(self, mocked_get, mocked_post):
+        mock_app_token(mocked_post)
+        mocked_get.return_value = mock.Mock(status_code=403, text='{"detail": "Forbidden"}',
+                                             json=lambda: {'detail': 'Forbidden'})
+
+        catalog = select_all_streams(discover(), only=['post_search_recent'])
         client = XApiClient(CONFIG)
         state = {}
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            sync(client, CONFIG, catalog, state)
+            with self.assertRaises(Exception):
+                sync(client, CONFIG, catalog, state)
         messages = parse_singer_output(buf.getvalue())
         self.assertEqual(len([m for m in messages if m['type'] == 'RECORD']), 0)
-        mocked_get.assert_not_called()
 
     @mock.patch('tap_twitter_ads.client.requests.Session.get')
     def test_search_runs_with_configured_query(self, mocked_get):
         mocked_get.return_value = mock.Mock(
-            status_code=200, json=lambda: {'data': [{'id': 'u1', 'username': 'a'}]})
-        config = dict(CONFIG, users_search_query='xdevelopers')
-        catalog = select_all_streams(discover(), only=['users_search'])
+            status_code=200, json=lambda: {'data': [{'id': '1', 'text': 'hi', 'created_at': '2023-01-01T00:00:00Z'}], 'meta': {}})
+        config = dict(CONFIG, post_search_query='#opensource')
+        catalog = select_all_streams(discover(), only=['post_search_recent'])
         client = XApiClient(config)
         state = {}
 
@@ -369,7 +427,34 @@ class TestSyncSearchStreams(unittest.TestCase):
         messages = parse_singer_output(buf.getvalue())
         record_msgs = [m for m in messages if m['type'] == 'RECORD']
         self.assertEqual(len(record_msgs), 1)
-        self.assertEqual(mocked_get.call_args.kwargs['params']['query'], 'xdevelopers')
+        self.assertEqual(mocked_get.call_args.kwargs['params']['query'], '#opensource')
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_post_search_recent_defaults_query_to_from_self_username(self, mocked_get, mocked_post):
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'xdevelopers'}})
+            if url.endswith('/2/tweets/search/recent'):
+                self.assertEqual(params['query'], 'from:xdevelopers')
+                return mock.Mock(status_code=200, json=lambda: {
+                    'data': [{'id': '1', 'text': 'hi', 'created_at': '2023-01-01T00:00:00Z'}], 'meta': {}})
+            raise AssertionError('Unexpected URL: {}'.format(url))
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        catalog = select_all_streams(discover(), only=['post_search_recent'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD' and m['stream'] == 'post_search_recent']
+        self.assertEqual(len(record_msgs), 1)
 
     @mock.patch('tap_twitter_ads.client.requests.Session.get')
     def test_search_incremental_bookmark_keyed_by_query(self, mocked_get):
@@ -429,6 +514,121 @@ class TestSyncSpaceByIdGroup(unittest.TestCase):
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'space_by_id']), 1)
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'space_tweets']), 1)
         self.assertEqual(len([m for m in record_msgs if m['stream'] == 'space_buyers']), 1)
+
+
+class TestSyncSelfDefaultIds(unittest.TestCase):
+    """These streams need an id-list/query config field that (per the tap's
+    5-required-fields design) is now OPTIONAL - each self-defaults from
+    another already-authenticated stream's own data instead of requiring
+    extra config."""
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_list_by_id_defaults_to_users_own_owned_lists(self, mocked_get, mocked_post):
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'me'}})
+            if url.endswith('/2/users/u1/owned_lists'):
+                return mock.Mock(status_code=200, json=lambda: {
+                    'data': [{'id': '111', 'name': 'My List'}], 'meta': {}})
+            if url.endswith('/2/lists/111'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': '111', 'name': 'My List'}})
+            if url.endswith('/2/lists/111/tweets'):
+                return mock.Mock(status_code=200, json=lambda: {
+                    'data': [{'id': 't1', 'text': 'hi', 'created_at': '2023-01-01T00:00:00Z'}], 'meta': {}})
+            raise AssertionError('Unexpected URL: {}'.format(url))
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        # user_owned_lists is NOT selected - only list_by_id/list_tweets are.
+        catalog = select_all_streams(discover(), only=['list_by_id', 'list_tweets'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD']
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'list_by_id']), 1)
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'list_tweets']), 1)
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'user_owned_lists']), 0)
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_space_by_id_defaults_to_users_own_creator_spaces(self, mocked_get, mocked_post):
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'me'}})
+            if url.endswith('/2/spaces/by/creator_ids'):
+                self.assertEqual(params['user_ids'], 'u1')
+                return mock.Mock(status_code=200, json=lambda: {'data': [{'id': 's1', 'title': 'My Space'}]})
+            if url.endswith('/2/spaces/s1'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 's1', 'title': 'My Space'}})
+            raise AssertionError('Unexpected URL: {}'.format(url))
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        # spaces_by_creator_ids is NOT selected - only space_by_id is.
+        catalog = select_all_streams(discover(), only=['space_by_id'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD']
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'space_by_id']), 1)
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'spaces_by_creator_ids']), 0)
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_trends_by_woeid_defaults_to_worldwide(self, mocked_get):
+        mocked_get.return_value = mock.Mock(
+            status_code=200, json=lambda: {'data': [{'trend_name': '#Foo', 'tweet_count': 10}]})
+        catalog = select_all_streams(discover(), only=['trends_by_woeid'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD']
+        self.assertEqual(len(record_msgs), 1)
+        self.assertTrue(mocked_get.call_args.args[0].endswith('/2/trends/by/woeid/1'))
+
+
+class TestGetSelectedStreamsToleratesStaleCatalog(unittest.TestCase):
+    def test_unknown_stream_in_catalog_is_skipped_with_a_warning_not_a_crash(self):
+        # Regression: a catalog generated by an older tap version may still
+        # reference a stream that was since removed from STREAMS (e.g. a
+        # stream requiring config with no derivable self-default) - this must
+        # be skipped cleanly, never raise a KeyError deep in sync()'s
+        # dispatch loop.
+        fake_selected = mock.Mock(stream='this_stream_was_removed')
+        fake_catalog = mock.Mock()
+        fake_catalog.get_selected_streams.return_value = [fake_selected]
+
+        with mock.patch('tap_twitter_ads.sync.LOGGER') as mocked_logger:
+            result = get_selected_streams(fake_catalog, {})
+
+        self.assertEqual(result, [])
+        warning_calls = [str(call) for call in mocked_logger.warning.call_args_list]
+        self.assertTrue(any('this_stream_was_removed' in c for c in warning_calls))
+
+    def test_mix_of_known_and_unknown_streams_keeps_only_known(self):
+        fake_known = mock.Mock(stream='users_me')
+        fake_unknown = mock.Mock(stream='this_stream_was_removed')
+        fake_catalog = mock.Mock()
+        fake_catalog.get_selected_streams.return_value = [fake_known, fake_unknown]
+
+        result = get_selected_streams(fake_catalog, {})
+        self.assertEqual(result, ['users_me'])
 
 
 if __name__ == '__main__':

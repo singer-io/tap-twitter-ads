@@ -163,12 +163,10 @@ class TestCheckAccessStatusMapping(unittest.TestCase):
             'HTTP-error-code: 402, Message: Usage cap exceeded')})
         self.assertFalse(check_access(STREAMS['account'], client, make_config()))
 
-    def test_404_does_not_mark_stream_inaccessible(self):
-        """404 means the endpoint is reachable but the looked-up resource
-        doesn't exist - not the same as the stream itself being
-        inaccessible, so it must stay True."""
+    def test_404_marks_stream_inaccessible(self):
+        """404 means the stream is not available and should be excluded."""
         client = FakeClient(raises={'/2/account': XApiNotFoundError('HTTP-error-code: 404, Message: Not Found')})
-        self.assertTrue(check_access(STREAMS['account'], client, make_config()))
+        self.assertFalse(check_access(STREAMS['account'], client, make_config()))
 
     def test_inaccessible_stream_excluded_from_catalog(self):
         """B. inaccessible stream is excluded from the discovered catalog."""

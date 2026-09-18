@@ -87,6 +87,11 @@ def write_schema(catalog, stream_name):
     singer.write_schema(stream_name, schema, stream.key_properties)
 
 
+def stream_in_catalog(catalog, stream_name):
+    """Return whether a stream is present in the discovered catalog."""
+    return catalog.get_stream(stream_name) is not None
+
+
 def config_id_list(config, key):
     """Parse an id-list field into a list of strings. Accepts either a JSON
     array or a comma-separated string; returns `[]` if the key is
@@ -591,28 +596,37 @@ def sync(client, config, catalog, state):
                     singer.set_currently_syncing(state, None)
                     singer.write_state(state)
 
-        # ---- self-default ids for streams whose driving parent wasn't itself
-        # selected (e.g. only `post_liking_users` selected, not `user_tweets`) --
+        # Resolve IDs from unselected self-default source streams when available.
         if me_id is not None:
             if needs_tweet_ids and 'user_tweets' not in user_children:
-                singer.set_currently_syncing(state, 'user_tweets')
-                try:
-                    _, tweet_ids_resolved = sync_child_stream(
-                        client, config, catalog, state, 'user_tweets', me_id, transformer, emit=False)
-                except STREAM_FAILURE_EXCEPTIONS as err:
-                    LOGGER.error('Stream: user_tweets - FAILED (resolving ids for dependent streams): %s', err)
-                singer.set_currently_syncing(state, None)
-                singer.write_state(state)
+                if not stream_in_catalog(catalog, 'user_tweets'):
+                    LOGGER.warning(
+                        'Stream: user_tweets - SKIPPED (resolving ids for dependent streams): '
+                        'excluded from catalog')
+                else:
+                    singer.set_currently_syncing(state, 'user_tweets')
+                    try:
+                        _, tweet_ids_resolved = sync_child_stream(
+                            client, config, catalog, state, 'user_tweets', me_id, transformer, emit=False)
+                    except STREAM_FAILURE_EXCEPTIONS as err:
+                        LOGGER.error('Stream: user_tweets - FAILED (resolving ids for dependent streams): %s', err)
+                    singer.set_currently_syncing(state, None)
+                    singer.write_state(state)
 
             if needs_list_ids and 'user_owned_lists' not in user_children:
-                singer.set_currently_syncing(state, 'user_owned_lists')
-                try:
-                    _, owned_list_ids_resolved = sync_child_stream(
-                        client, config, catalog, state, 'user_owned_lists', me_id, transformer, emit=False)
-                except STREAM_FAILURE_EXCEPTIONS as err:
-                    LOGGER.error('Stream: user_owned_lists - FAILED (resolving ids for dependent streams): %s', err)
-                singer.set_currently_syncing(state, None)
-                singer.write_state(state)
+                if not stream_in_catalog(catalog, 'user_owned_lists'):
+                    LOGGER.warning(
+                        'Stream: user_owned_lists - SKIPPED (resolving ids for dependent streams): '
+                        'excluded from catalog')
+                else:
+                    singer.set_currently_syncing(state, 'user_owned_lists')
+                    try:
+                        _, owned_list_ids_resolved = sync_child_stream(
+                            client, config, catalog, state, 'user_owned_lists', me_id, transformer, emit=False)
+                    except STREAM_FAILURE_EXCEPTIONS as err:
+                        LOGGER.error('Stream: user_owned_lists - FAILED (resolving ids for dependent streams): %s', err)
+                    singer.set_currently_syncing(state, None)
+                    singer.write_state(state)
 
         if tweet_ids_resolved:
             config = dict(config)
@@ -668,19 +682,22 @@ def sync(client, config, catalog, state):
             singer.set_currently_syncing(state, None)
             singer.write_state(state)
 
-        # ---- self-default: space_by_id (+children)/spaces_by_ids sourced from
-        # spaces_by_creator_ids' own ids, fetched here (without emitting) if
-        # spaces_by_creator_ids itself wasn't selected --------------------
+        # Resolve space IDs from the unselected creator source when available.
         if needs_space_ids and 'spaces_by_creator_ids' not in selected_streams and me_id is not None:
-            singer.set_currently_syncing(state, 'spaces_by_creator_ids')
-            try:
-                fetch_config = dict(config, _resolved_creator_ids=me_id)
-                _, creator_space_ids = sync_config_ids_stream(
-                    client, fetch_config, catalog, 'spaces_by_creator_ids', transformer, emit=False)
-            except STREAM_FAILURE_EXCEPTIONS as err:
-                LOGGER.error('Stream: spaces_by_creator_ids - FAILED (resolving ids for dependent streams): %s', err)
-            singer.set_currently_syncing(state, None)
-            singer.write_state(state)
+            if not stream_in_catalog(catalog, 'spaces_by_creator_ids'):
+                LOGGER.warning(
+                    'Stream: spaces_by_creator_ids - SKIPPED (resolving ids for dependent streams): '
+                    'excluded from catalog')
+            else:
+                singer.set_currently_syncing(state, 'spaces_by_creator_ids')
+                try:
+                    fetch_config = dict(config, _resolved_creator_ids=me_id)
+                    _, creator_space_ids = sync_config_ids_stream(
+                        client, fetch_config, catalog, 'spaces_by_creator_ids', transformer, emit=False)
+                except STREAM_FAILURE_EXCEPTIONS as err:
+                    LOGGER.error('Stream: spaces_by_creator_ids - FAILED (resolving ids for dependent streams): %s', err)
+                singer.set_currently_syncing(state, None)
+                singer.write_state(state)
 
         if creator_space_ids:
             config = dict(config)

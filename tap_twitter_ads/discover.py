@@ -35,8 +35,14 @@ def _probe(client, stream, path, params, on_success=None):
         if on_success is not None:
             on_success(response)
         return True
-    except XApiNotFoundError:
-        return True
+    except XApiNotFoundError as exc:
+        LOGGER.warning(
+            "Stream '%s' not found (404), excluding from catalog. "
+            "HTTP-Error-Message: '%s'",
+            stream.tap_stream_id,
+            str(exc),
+        )
+        return False
     except INACCESSIBLE_EXCEPTIONS as exc:
         LOGGER.warning(
             "Stream '%s' is not accessible. Error: %s",

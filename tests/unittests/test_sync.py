@@ -6,6 +6,7 @@ from unittest import mock
 
 from tap_twitter_ads.discover import discover as _discover
 from tap_twitter_ads.client import XApiClient
+from tap_twitter_ads.exceptions import XApiForbiddenError
 from tap_twitter_ads.sync import sync, get_selected_streams
 from tap_twitter_ads.streams import STREAMS
 
@@ -620,6 +621,110 @@ class TestSyncSelfDefaultIds(unittest.TestCase):
         record_msgs = [m for m in messages if m['type'] == 'RECORD']
         self.assertEqual(len(record_msgs), 1)
         self.assertTrue(mocked_get.call_args.args[0].endswith('/2/trends/by/woeid/1'))
+
+
+class TestSyncHandlesIdSourceStreamExcludedFromCatalog(unittest.TestCase):
+    """Ensure excluded implicit ID-source streams do not cause sync failures."""
+
+    class _DiscoveryFakeClient:
+        """Allow all discovery probes except user_tweets."""
+
+        def get(self, path, params=None, auth='app'):
+            if path == '/2/users/u1/tweets':
+                raise XApiForbiddenError('HTTP-error-code: 403, Message: Forbidden')
+            if path == '/2/users/me':
+                return {'data': {'id': 'u1', 'username': 'xdevelopers'}}
+            return {'data': {'id': '123', 'username': 'someuser'}}
+
+    def _discover_with_user_tweets_excluded(self):
+        return _discover(self._DiscoveryFakeClient(), CONFIG)
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_tweets_by_ids_selected_with_no_tweet_ids_and_user_tweets_excluded_does_not_crash(
+            self, mocked_get, mocked_post):
+        """Skip ID resolution when user_tweets is excluded from the catalog."""
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(
+                    status_code=200,
+                    json=lambda: {'data': {'id': 'u1', 'username': 'xdevelopers'}}
+                )
+            raise AssertionError(
+                'Unexpected URL during sync (user_tweets was excluded from the '
+                'catalog, so it must never be fetched): {}'.format(url)
+            )
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        catalog = self._discover_with_user_tweets_excluded()
+        self.assertIsNone(catalog.get_stream('user_tweets'),
+                          'test setup invalid - user_tweets should have been excluded from the catalog')
+
+        catalog = select_all_streams(catalog, only=['tweets_by_ids'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+
+        messages = parse_singer_output(buf.getvalue())
+        record_msgs = [m for m in messages if m['type'] == 'RECORD']
+        self.assertEqual(len(record_msgs), 0)
+
+    @mock.patch('tap_twitter_ads.sync.LOGGER')
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_logs_a_skipped_warning_naming_the_excluded_stream(self, mocked_get, mocked_post, mocked_logger):
+        mock_app_token(mocked_post)
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: mock.Mock(
+            status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'xdevelopers'}})
+
+        catalog = select_all_streams(self._discover_with_user_tweets_excluded(), only=['tweets_by_ids'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+
+        warning_calls = [str(call) for call in mocked_logger.warning.call_args_list]
+        self.assertTrue(any('user_tweets' in c and 'SKIPPED' in c and 'excluded from catalog' in c
+                            for c in warning_calls))
+
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_reproduces_exact_original_crash_scenario_from_sync_log(self, mocked_get, mocked_post):
+        """Reproduce the original crash with a zero-record sibling stream."""
+        mock_app_token(mocked_post)
+
+        def response_for(url, params=None):
+            if url.endswith('/2/users/me'):
+                return mock.Mock(status_code=200, json=lambda: {'data': {'id': 'u1', 'username': 'xdevelopers'}})
+            if url.endswith('/2/users/u1/bookmarks/folders'):
+                return mock.Mock(status_code=200, json=lambda: {'data': [], 'meta': {}})
+            raise AssertionError('Unexpected URL during sync (user_tweets was excluded from the '
+                                 'catalog, so it must never be fetched): {}'.format(url))
+
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: response_for(url, params)
+
+        catalog = select_all_streams(self._discover_with_user_tweets_excluded(),
+                                      only=['users_me', 'user_bookmark_folders', 'tweets_by_ids'])
+        client = XApiClient(CONFIG)
+        state = {}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+        messages = parse_singer_output(buf.getvalue())
+
+        record_msgs = [m for m in messages if m['type'] == 'RECORD']
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'users_me']), 1)
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'user_bookmark_folders']), 0)
+        self.assertEqual(len([m for m in record_msgs if m['stream'] == 'tweets_by_ids']), 0)
 
 
 class TestGetSelectedStreamsToleratesStaleCatalog(unittest.TestCase):

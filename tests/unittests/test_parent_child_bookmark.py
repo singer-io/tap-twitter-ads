@@ -1,105 +1,134 @@
+import io
+import json
 import unittest
+from contextlib import redirect_stdout
 from unittest import mock
-from unittest.mock import Mock, patch
-from tap_twitter_ads.streams import LineItems
+
+from tap_twitter_ads.discover import discover as _discover
+from tap_twitter_ads.client import XApiClient
 from tap_twitter_ads.sync import sync
 
-START_DATE = "2022-01-28T00:00:00Z"
-STREAM_NAME = "line_items"
-ACCOUNT_ID = 'dummy_account_id'
+# NOTE: unlike the old OAuth1 Ads tap (LineItems -> targeting_criteria, keyed
+# by a fixed `account_id`), the OAuth2 tap's parent/child relationship is
+# users_me -> user_tweets (etc.), and bookmarks are keyed by the parent
+# record's real id (here, the authenticated user's id) rather than a fixed
+# account_id. The independence being tested - a child stream's bookmark
+# advances/holds independently of its parent and of other children - is the
+# same property as the original test, just ported to the new stream shape.
+
+CONFIG = {
+    'start_date': '2023-01-01T00:00:00Z',
+    'client_id': 'cid',
+    'client_secret': 'csecret',
+    'access_token': 'initial_access_token',
+    'refresh_token': 'initial_refresh_token',
+}
 
 
-@patch('singer.metadata.to_map')
-@patch('singer.Transformer.transform')
-@patch('singer.write_schema')
-@patch('singer.messages.write_record')
-@patch('twitter_ads.http.Request.perform')
-class TestParentChildBookmarkingWithNoData(unittest.TestCase):
-    """
-    Test bookmarking for child stream. Verify that the bookmark mechanism of the child stream is independent of the parent stream.
-    """
-    def test_child_bookmark_update_with_no_data(self, mock_request, mock_write_record, mock_write_schema,
-                                                          mock_transform, mock_metadata):
-        """
-        Verify that tap does not write a bookmark for the stream if there is no data available in historic sync.
-        """
-        mock_client = Mock() # Mock the twitter_ads sdk client object
-        mock_catalog = Mock() # Mock catalog
+def make_all_accessible_client():
+    """A fake client whose `.get()` always succeeds (never raises), so every
+    stream's check_access() probe passes - mirrors test_discover.py's helper
+    of the same name. `discover()` below always uses this, since the tests
+    in this file only care about sync behavior given an already-selected
+    catalog, not discovery's live access-check filtering."""
+    client = mock.Mock()
+    client.get.return_value = {'data': {'id': '123', 'username': 'someuser'}}
+    return client
 
-        test_stream = LineItems()
-        mock_line_items = []
-        mock_response = Mock()
-        mock_response.body = {'data': mock_line_items}
-        mock_response.headers = []
 
-        mock_request.return_value = mock_response # Mock twitter_ads.http.Request.perform with proper response
-        state = {"bookmarks": {}}
+def discover():
+    """Local wrapper preserving the no-arg call signature used throughout
+    this file: discover.discover() now requires a real client/config (live
+    access checks), so this builds the full, unfiltered catalog via a fake
+    always-accessible client instead."""
+    return _discover(make_all_accessible_client(), CONFIG)
 
-        # Call sync_endpoint to verify bookmark for child stream
-        test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, STREAM_NAME, 
-                    LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], selected_streams=['line_items', 'targeting_criteria'])
 
-        # Verify that Request.perform called only once for parent.
-        self.assertEqual(mock_request.call_count, 1)
+def select_all_streams(catalog, only=None):
+    for stream in catalog.streams:
+        if only and stream.tap_stream_id not in only:
+            continue
+        for entry in stream.metadata:
+            if entry.get('breadcrumb') == ():
+                entry.setdefault('metadata', {})['selected'] = True
+    return catalog
 
-    @mock.patch("tap_twitter_ads.streams.TwitterAds.write_bookmark")
-    def test_child_bookmark_update(self, mock_write_bookmark, mock_request, mock_write_record, mock_write_schema, mock_transform, mock_metadata):
-        """
-        Verify that tap write bookmark for child stream independent of parent stream.
-        """
-        mock_client = Mock() # Mock the twitter_ads sdk client object
-        mock_catalog = Mock() # Mock catalog
-        test_stream = LineItems()
 
-        mock_line_items = [
-            {'id': 1484405085639962727,'updated_at': '2022-03-09T04:59:57Z', 'deleted': False},
-            {'id': 1484405085639962627,'updated_at': '2022-03-07T04:59:57Z', 'deleted': False}]
-        mock_response = Mock()
-        mock_response.body = {'data': mock_line_items}
-        mock_response.headers = []
+def parse_singer_output(raw_text):
+    return [json.loads(line) for line in raw_text.strip().splitlines() if line.strip()]
 
-        mock_request.return_value = mock_response # Mock twitter_ads.http.Request.perform with proper response
-        state = {"bookmarks": {"line_items": {ACCOUNT_ID: "2022-03-08T04:59:57Z"}}}
 
-        # Call sync_endpoint to verify bookmark for child stream
-        test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, 'targeting_criteria', 
-                    LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], selected_streams=['line_items', 'targeting_criteria'])
+def mock_app_token(mocked_post):
+    resp = mock.Mock()
+    resp.status_code = 200
+    resp.json.return_value = {'access_token': 'app_token', 'token_type': 'bearer'}
+    mocked_post.return_value = resp
 
-        # assert that write_bookmark is called with current state and max_bookmark_value
-        mock_write_bookmark.assert_called_with(state, "targeting_criteria", "2022-03-09T04:59:57Z", ACCOUNT_ID)
-    
-        # Verify that Request.perform called 2 times, 1 time for parent and 1 times for child call.
-        self.assertEqual(mock_request.call_count, 2)
 
-    def test_child_bookmark_update_with_state(self, mock_request, mock_write_record, mock_write_schema, mock_transform, mock_metadata):
-        """
-        Verify that tap does not update bookmark for child stream if no new record found for parent stream
-        """
-        mock_client = Mock() # Mock the twitter_ads sdk client object
-        mock_catalog = Mock() # Mock catalog
-        test_stream = LineItems()
-        test_stream.get_selected_fields = mock.Mock()
-        test_stream.get_selected_fields.return_value = ['targeting_criteria']
+class TestParentChildBookmarkIndependence(unittest.TestCase):
+    """Verify that bookmarking for a child stream (user_tweets) is
+    independent of its parent (users_me, which has no bookmark at all -
+    it's FULL_TABLE) and of sibling children."""
 
-        mock_line_items = [
-            {'id': 1484405085639962727,'updated_at': '2022-03-09T04:59:57Z', 'deleted': False},
-            {'id': 1484405085639962627,'updated_at': '2022-03-07T04:59:57Z', 'deleted': False}]
-        mock_response = Mock()
-        mock_response.body = {'data': mock_line_items}
-        mock_response.headers = []
+    def _responses(self, url):
+        resp = mock.Mock()
+        resp.status_code = 200
+        if url.endswith('/2/users/me'):
+            resp.json.return_value = {'data': {'id': 'u1', 'username': 'xdevelopers'}}
+        elif url.endswith('/2/users/u1/tweets'):
+            resp.json.return_value = {'data': [], 'meta': {}}
+        elif url.endswith('/2/users/u1/mentions'):
+            resp.json.return_value = {'data': [
+                {'id': '9', 'text': 'a mention', 'created_at': '2023-05-01T00:00:00Z'},
+            ], 'meta': {}}
+        else:
+            raise AssertionError('Unexpected URL: {}'.format(url))
+        return resp
 
-        mock_request.return_value = mock_response # Mock twitter_ads.http.Request.perform with proper response
-        state = {"bookmarks": {"line_items": {ACCOUNT_ID: "2022-03-09T04:59:57Z"}, "targeting_criteria": {ACCOUNT_ID: "2022-03-09T04:59:57Z"}}}
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_no_bookmark_written_when_child_stream_has_no_data(self, mocked_get, mocked_post):
+        """Verify that no new (incorrect) bookmark value appears for a child
+        stream when its sync returns zero records - the bookmark should stay
+        at start_date, not silently disappear or error."""
+        mock_app_token(mocked_post)
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: self._responses(url)
 
-        # Call sync_endpoint to verify bookmark for child stream
-        test_stream.sync_endpoint(mock_client, mock_catalog, state, START_DATE, STREAM_NAME, 
-                    LineItems, {}, ACCOUNT_ID, child_streams=['targeting_criteria'], 
-                    selected_streams=['line_items', 'targeting_criteria'])
+        catalog = select_all_streams(discover(), only=['users_me', 'user_tweets'])
+        client = XApiClient(CONFIG)
+        state = {}
 
-        # Get bookmark of child stream after sync
-        bookmark = test_stream.get_bookmark(state, 'targeting_criteria', START_DATE, ACCOUNT_ID)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
 
-        self.assertEqual(bookmark, '2022-03-09T04:59:57Z')
+        # user_tweets got 0 records, but the bookmark is still written
+        # (always, unconditionally - see sync_child_stream) at start_date.
+        self.assertEqual(state['bookmarks']['user_tweets']['u1'], '2023-01-01T00:00:00Z')
+        # users_me (FULL_TABLE) never gets a bookmark entry at all.
+        self.assertNotIn('users_me', state.get('bookmarks', {}))
 
-        # Verify that Request.perform called 2 times, 1 time for parent and 1 time for child call.
-        self.assertEqual(mock_request.call_count, 2)
+    @mock.patch('tap_twitter_ads.client.requests.Session.post')
+    @mock.patch('tap_twitter_ads.client.requests.Session.get')
+    def test_child_stream_bookmark_advances_independent_of_sibling(self, mocked_get, mocked_post):
+        """Verify that user_mentions' bookmark advances based on its own
+        data, unaffected by its sibling user_tweets returning nothing."""
+        mock_app_token(mocked_post)
+        mocked_get.side_effect = lambda url, headers=None, params=None, timeout=None: self._responses(url)
+
+        catalog = select_all_streams(discover(), only=['users_me', 'user_tweets', 'user_mentions'])
+        client = XApiClient(CONFIG)
+        state = {'bookmarks': {'user_mentions': {'u1': '2023-02-01T00:00:00Z'}}}
+
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            sync(client, CONFIG, catalog, state)
+
+        # user_mentions advanced to the newest record's created_at
+        self.assertEqual(state['bookmarks']['user_mentions']['u1'], '2023-05-01T00:00:00Z')
+        # user_tweets (0 records) stayed at start_date, independent of its sibling
+        self.assertEqual(state['bookmarks']['user_tweets']['u1'], '2023-01-01T00:00:00Z')
+
+
+if __name__ == '__main__':
+    unittest.main()

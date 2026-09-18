@@ -6,20 +6,22 @@ from base import TwitterAds
 class ParentChildIndependentTest(TwitterAds):
     """
         Test case to verify that tap is working fine if only first-level child streams are selected
-    """  
-  
+    """
+
     def name(self):
         return "tap_tester_twitter_ads_parent_child_test"
 
     def test_run(self):
         """
             Testing that tap is working fine if only child streams are selected
-            - Verify that if only child streams are selected then only child streams are replicated.
+            - Verify that if only child streams are selected then only child streams are replicated
+              (the parent, users_me, is still fetched internally to resolve the child's `{id}`, but
+              is not itself selected/emitted - see sync.py's `_sync_users_me`).
         """
 
-        # Test for the case of child is selected and parent is not selected
-        child_streams = {'targeting_criteria'}
-        
+        # Test for the case where a users_me-child stream is selected and users_me itself is not
+        child_streams = {'user_tweets'}
+
         # instantiate connection
         conn_id = connections.ensure_connection(self)
 
@@ -29,13 +31,12 @@ class ParentChildIndependentTest(TwitterAds):
         # table and field selection
         catalog_entries = [catalog for catalog in found_catalogs
                            if catalog.get('tap_stream_id') in child_streams]
-        # table and field selection
         self.perform_and_verify_table_and_field_selection(conn_id, catalog_entries)
 
         # run initial sync
         self.run_and_verify_sync(conn_id)
         synced_records = runner.get_records_from_target_output()
 
-        # Verify no unexpected streams were replicated
+        # Verify no unexpected streams were replicated (users_me itself should NOT appear)
         synced_stream_names = set(synced_records.keys())
         self.assertSetEqual(child_streams, synced_stream_names)

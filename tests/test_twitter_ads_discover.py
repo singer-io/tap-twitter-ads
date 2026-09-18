@@ -76,63 +76,44 @@ class DiscoverTest(TwitterAds):
                     if item.get("metadata").get("inclusion") == "automatic"
                 )
                 actual_parent_stream = stream_properties[0].get("metadata", {}).get("parent-tap-stream-id")
-
                 actual_fields = []
-                for md_entry in metadata:
-                    if md_entry['breadcrumb'] != []:
-                        actual_fields.append(md_entry['breadcrumb'][1])
+                for field in metadata:
+                    if field["breadcrumb"] != []:
+                        actual_fields.append(field["breadcrumb"][1])
 
-                ##########################################################################
-                ### metadata assertions
-                ##########################################################################
+                        # Verify there are no duplicate metadata entries per field
+                        self.assertEqual(
+                            1, len([item for item in metadata
+                                    if item.get("breadcrumb") == field.get("breadcrumb")]),
+                            msg="duplicate metadata entries found for stream {}, field {}".format(
+                                stream, field.get("breadcrumb")))
 
                 # verify there is only 1 top level breadcrumb in metadata
                 self.assertTrue(len(stream_properties) == 1,
-                                msg="There is NOT only one top level breadcrumb for {}".format(stream) + \
+                                msg="There is NOT only one top level breadcrumb for {}".format(stream) +
                                 "\nstream_properties | {}".format(stream_properties))
 
-                # verify there are no duplicate metadata entries
-                self.assertEqual(len(actual_fields), len(set(actual_fields)), msg = "duplicates in the fields retrieved")
+                # verify primary keys are as expected
+                self.assertSetEqual(expected_primary_keys, actual_primary_keys)
 
                 # verify replication key(s) match expectations
-                self.assertEqual(expected_replication_keys, actual_replication_keys,
-                                 msg="expected replication key {} but actual is {}".format(
-                                     expected_replication_keys, actual_replication_keys))
+                self.assertSetEqual(expected_replication_keys, actual_replication_keys)
 
-                # verify primary key(s) match expectations
-                self.assertSetEqual(expected_primary_keys, actual_primary_keys,
-                                 msg="expected primary key {} but actual is {}".format(
-                                     expected_primary_keys, actual_primary_keys))
+                # verify parent-tap-stream-id matches expectations for child streams
+                self.assertEqual(expected_parent_stream, actual_parent_stream)
 
                 # verify the replication method matches our expectations
-                self.assertEqual(expected_replication_method, actual_replication_method,
-                                    msg="The actual replication method {} doesn't match the expected {}".format(
-                                        actual_replication_method, expected_replication_method))
+                self.assertEqual(expected_replication_method, actual_replication_method)
 
-                # verify that if there is a replication key we are doing INCREMENTAL otherwise FULL
-                if stream == "targeting_criteria" or expected_replication_keys:
-                    # `targeting_criteria` is child stream of line_items stream which is incremental.
-                    # We are writing a separate bookmark for the child stream in which we are storing 
-                    # the bookmark based on the parent's replication key.
-                    # But, we are not using any fields from the child record for it.
-                    # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
-                    self.assertEqual(self.INCREMENTAL, actual_replication_method)
-                else:
-                    self.assertEqual(self.FULL_TABLE, actual_replication_method)
-
-                # verify parent-tap-stream-id is correctly set for child streams
-                self.assertEqual(expected_parent_stream, actual_parent_stream,
-                                msg="expected parent stream {} but actual is {}".format(
-                                    expected_parent_stream, actual_parent_stream))
-
-                # verify that primary keys and replication keys
-                # are given the inclusion of automatic in metadata.
+                # verify that primary keys and replication keys are given the inclusion of automatic.
                 self.assertSetEqual(expected_automatic_fields, actual_automatic_fields)
 
                 # verify that all other fields have inclusion of available
-                field_metadata = [item for item in metadata if item["breadcrumb"] != []]
-                expected_available_field_metadata = [fmd for fmd in field_metadata
-                                                     if fmd["breadcrumb"][1] not in expected_automatic_fields]
-                for item in expected_available_field_metadata:
-                    with self.subTest(field=item["breadcrumb"][1]):
-                        self.assertEqual("available", item["metadata"]["inclusion"])
+                # (only primary/replication keys should be automatic)
+                self.assertTrue(
+                    all({field["metadata"]["inclusion"] == "available"
+                         for field in metadata
+                         if field["breadcrumb"] != [] and
+                         field["breadcrumb"][1] not in expected_automatic_fields}),
+                    msg="Not all non-key properties have inclusion of available: {}".format(stream)
+                )

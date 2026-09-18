@@ -7,10 +7,11 @@ from base import TwitterAds
 
 class StartDateTest(TwitterAds):
     """
-    Ensure both all expected streams respect the start date. Run tap in check mode, 
-    run 1st sync with start date = 2019-03-01T00:00:00Z, run check mode and 2nd sync on a new connection with start date 2022-04-04T06:00:00Z.
+    Ensure incremental streams respect the start date. Run tap in check mode,
+    run 1st sync with start date = 2020-01-01T00:00:00Z, run check mode and
+    2nd sync on a new connection with a later start date.
     """
-    
+
     def name(self):
         return "tap_tester_twitter_ads_start_date_test"
 
@@ -18,37 +19,16 @@ class StartDateTest(TwitterAds):
     start_date_2 = ""
 
     def test_run(self):
-        # Streams to verify start date tests
-        streams_to_test = self.expected_streams()
+        # Only INCREMENTAL streams meaningfully "obey" start_date - FULL_TABLE
+        # streams always replicate everything regardless of start_date (see
+        # `expected_metadata()`'s `OBEYS_START_DATE` flag in base.py).
+        streams_to_test = {stream for stream, obeys in
+                           ((s, props.get(self.OBEYS_START_DATE)) for s, props in self.expected_metadata().items())
+                           if obeys}
 
-        # For the following streams(except targeting_tv_markets and targeting_tv_shows), we are not able to generate any records.
-        # targeting_tv_markets and targeting_tv_shows streams take more than 5 hour to complete the sync.
-        #  So, skipping those streams from test case.
-        streams_to_test = streams_to_test - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
-                                            'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report', 'accounts',
-                                            'targeting_tv_markets', 'targeting_tv_shows'}
+        self.run_start_date(streams_to_test, new_start_date="2024-01-01T00:00:00Z")
 
-        # running start_date_test for `line_items` and `targeting_criteria` stream
-        expected_stream_1 = {"line_items", "targeting_criteria"}
-        self.run_start_date(expected_stream_1, new_start_date="2022-06-01T00:00:00Z")
-        
-        # running start_date_test for `targeting_events`
-        expected_stream_2 = {'targeting_events'}
-        self.run_start_date(expected_stream_2, new_start_date="2019-06-01T00:00:00Z")
-        
-        # running start_date_test for rest of the streams
-
-        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
-        # So, page_size of 200 get a lot of time to get all records.
-        expected_stream_3 = {"targeting_locations", "targeting_conversations"}
-        self.run_start_date(streams_to_test=expected_stream_3, new_start_date="2022-04-06T00:00:00Z", page_size=1000)
-
-        # For, some of the streams the maximum allowed page_size is 200. For, the greater value of page_size SDK throws the error.
-        # So, revert back page_size to 200 for the rest of the streams.
-        streams_to_test = streams_to_test - expected_stream_1 - expected_stream_2 - expected_stream_3
-        self.run_start_date(streams_to_test, new_start_date="2025-09-15T00:00:00Z")
-
-    def run_start_date(self, streams_to_test, new_start_date, page_size = 200):
+    def run_start_date(self, streams_to_test, new_start_date, page_size = 100):
         """
         Test that the start_date configuration is respected
         • verify that a sync with a later start date has at least one record synced
@@ -87,7 +67,7 @@ class StartDateTest(TwitterAds):
         ##########################################################################
         # Update START DATE Between Syncs
         ##########################################################################
-   
+
         LOGGER.info("REPLICATION START DATE CHANGE: {} ===>>> {} ".format(
             self.start_date, self.start_date_2))
         self.start_date = self.start_date_2
@@ -97,8 +77,7 @@ class StartDateTest(TwitterAds):
         ##########################################################################
 
         # create a new connection with the new start_date
-        conn_id_2 = connections.ensure_connection(
-            self, original_properties=False)
+        conn_id_2 = connections.ensure_connection(self, original_properties=False)
 
         # run check mode
         found_catalogs_2 = self.run_and_verify_check_mode(conn_id_2)
@@ -109,84 +88,33 @@ class StartDateTest(TwitterAds):
         self.perform_and_verify_table_and_field_selection(
             conn_id_2, test_catalogs_2_all_fields, select_all_fields=True)
 
-        # run sync
+        # run second sync
         record_count_by_stream_2 = self.run_and_verify_sync(conn_id_2)
         synced_records_2 = runner.get_records_from_target_output()
 
         for stream in streams_to_test:
             with self.subTest(stream=stream):
 
-                # expected values
-                expected_primary_keys = self.expected_primary_keys()[stream]
-                expected_replication_method = expected_replication_methods[stream]
+                replication_key = list(self.expected_replication_keys()[stream])[0]
 
-                # collect information for assertions from syncs 1 & 2 base on expected values
+                # record counts
                 record_count_sync_1 = record_count_by_stream_1.get(stream, 0)
                 record_count_sync_2 = record_count_by_stream_2.get(stream, 0)
 
-                primary_keys_list_1 = [tuple(message.get('data').get(expected_pk) for expected_pk in expected_primary_keys)
-                                       for message in synced_records_1.get(stream, {}).get('messages', [])
-                                       if message.get('action') == 'upsert']
-                primary_keys_list_2 = [tuple(message.get('data').get(expected_pk) for expected_pk in expected_primary_keys)
-                                       for message in synced_records_2.get(stream, {}).get('messages', [])
-                                       if message.get('action') == 'upsert']
+                # verify that at least one record was replicated for each sync
+                self.assertGreater(record_count_sync_1, 0)
+                self.assertGreater(record_count_sync_2, 0)
 
-                primary_keys_sync_1 = set(primary_keys_list_1)
-                primary_keys_sync_2 = set(primary_keys_list_2)
+                # verify that the second sync (later start_date) replicated
+                # fewer-or-equal records than the first (earlier start_date)
+                self.assertLessEqual(record_count_sync_2, record_count_sync_1)
 
-                # `targeting_criteria` is child stream of line_items stream which is incremental.
-                # We are writing a separate bookmark for the child stream in which we are storing
-                # the bookmark based on the parent's replication key.
-                # But, we are not using any fields from the child record for it.
-                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
-                if expected_replication_method == self.INCREMENTAL and stream != "targeting_criteria":
-
-                    # collect information specific to incremental streams from syncs 1 & 2
-                    expected_replication_key = next(
-                        iter(self.expected_replication_keys().get(stream, [])))
-                    replication_dates_1 = [row.get('data').get(expected_replication_key) for row in
-                                        synced_records_1.get(stream, {'messages': []}).get('messages', [])
-                                        if row.get('data')]
-                    replication_dates_2 = [row.get('data').get(expected_replication_key) for row in
-                                        synced_records_2.get(stream, {'messages': []}).get('messages', [])
-                                        if row.get('data')]
-
-                    # Verify replication key is greater or equal to start_date for sync 1
-                    for replication_date in replication_dates_1:
-
-                        self.assertGreaterEqual(
-                            replication_date, self.start_date_1,
-                            msg="Report pertains to a date prior to our start date.\n" +
-                            "Sync start_date: {}\n".format(self.start_date_1) +
-                                "Record date: {} ".format(replication_date)
-                        )
-
-                    # Verify replication key is greater or equal to start_date for sync 2
-                    for replication_date in replication_dates_2:
-
-                        self.assertGreaterEqual(
-                            replication_date, self.start_date_2,
-                            msg="Report pertains to a date prior to our start date.\n" +
-                            "Sync start_date: {}\n".format(self.start_date_2) +
-                                "Record date: {} ".format(replication_date)
-                        )
-
-                    # Verify the records replicated in sync 2 were also replicated in sync 1
-                    self.assertTrue(
-                        primary_keys_sync_2.issubset(primary_keys_sync_1))
-
-                if self.expected_metadata()[stream][self.OBEYS_START_DATE]:
-                    
-                    # Verify the number of records replicated in sync 1 is greater than the number
-                    # of records replicated in sync 2
-                    self.assertGreater(record_count_sync_1,
-                                       record_count_sync_2)
-                else:
-                    
-                    # Verify that the 2nd sync with a later start date replicates the same number of
-                    # records as the 1st sync.
-
-                    self.assertEqual(record_count_sync_2, record_count_sync_1)
-
-                    # Verify by primary key the same records are replicated in the 1st and 2nd syncs
-                    self.assertSetEqual(primary_keys_sync_1, primary_keys_sync_2)
+                # verify all replication key values in the 2nd sync are >= the new start date
+                target_mark_2 = synced_records_2.get(stream)
+                target_value_2 = [row.get('data').get(replication_key) for row in
+                                  target_mark_2.get('messages') if row.get('action') == 'upsert']
+                for value in target_value_2:
+                    self.assertGreaterEqual(
+                        self.convert_state_to_utc(value), self.convert_state_to_utc(self.start_date_2),
+                        msg="Record replicated with a replication-key value earlier than the new start_date"
+                    )

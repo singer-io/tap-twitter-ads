@@ -1,79 +1,66 @@
 import unittest
 
-from tap_twitter_ads.streams import get_page_size
+from tap_twitter_ads.sync import get_page_size, MIN_PAGE_SIZE, MAX_PAGE_SIZE
+
 
 def get_config(value):
     return {"page_size": value}
 
-DEFAULT_PAGE_SIZE = 1000
 
 class TestPageSize(unittest.TestCase):
+    """Tests to validate different values of the page_size parameter.
 
-    """Tests to validate different values of the page_size parameter"""
-    
-    error_message = "The entered page size ({}) is invalid"
+    NOTE: unlike the old OAuth1 Ads tap (which raised an exception for any
+    invalid page_size), the OAuth2 tap's `get_page_size` clamps to
+    [MIN_PAGE_SIZE, MAX_PAGE_SIZE] and falls back to MAX_PAGE_SIZE for
+    unset/invalid values - a bad page_size should never crash a sync that
+    would otherwise succeed."""
 
     def test_integer_page_size_field(self):
-        """ Verify that page_size is set to 100 if int 100 is given in the config """
-        expected_value = 100
-        actual_value = get_page_size(get_config(100), DEFAULT_PAGE_SIZE)
-        
-        self.assertEqual(actual_value, expected_value)
-        
+        """ Verify that page_size is set to 50 if int 50 is given in the config """
+        actual_value = get_page_size(get_config(50))
+        self.assertEqual(actual_value, 50)
+
     def test_float_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if float 100.05 is given in the config """
+        """ Verify that a float page_size is clamped/coerced without raising """
+        actual_value = get_page_size(get_config(50.9))
+        self.assertEqual(actual_value, 50)
 
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config(100.05), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format(100.05))
+    def test_zero_page_size_field_falls_back_to_default(self):
+        """ Verify that 0 (falsy) falls back to MAX_PAGE_SIZE, same as unset """
+        actual_value = get_page_size(get_config(0))
+        self.assertEqual(actual_value, MAX_PAGE_SIZE)
 
-    def test_zero_int_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if 0 is given in the config """
+    def test_missing_page_size_field_falls_back_to_default(self):
+        """ Verify that page_size is set to MAX_PAGE_SIZE if unset in config """
+        actual_value = get_page_size({})
+        self.assertEqual(actual_value, MAX_PAGE_SIZE)
 
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config(0), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format(0))
-
-    def test_empty_string_page_size_field(self):
-        """ Verify that page_size is set to DEFAULT_PAGE_SIZE if empty string is given in the config """
-
-        expected_value = DEFAULT_PAGE_SIZE
-        actual_value = get_page_size(get_config(""), DEFAULT_PAGE_SIZE)
-
-        self.assertEqual(actual_value, expected_value)
+    def test_empty_string_page_size_field_falls_back_to_default(self):
+        """ Verify that page_size is set to MAX_PAGE_SIZE if empty string is given """
+        actual_value = get_page_size(get_config(""))
+        self.assertEqual(actual_value, MAX_PAGE_SIZE)
 
     def test_string_page_size_field(self):
-        """ Verify that page_size is set to 100 if string "100" is given in the config """
+        """ Verify that page_size is set to 50 if string "50" is given in the config """
+        actual_value = get_page_size(get_config("50"))
+        self.assertEqual(actual_value, 50)
 
-        expected_value = 100
-        actual_value = get_page_size(get_config("100"), DEFAULT_PAGE_SIZE)
+    def test_invalid_string_page_size_field_falls_back_to_default(self):
+        """ Verify that an unparseable string falls back to MAX_PAGE_SIZE rather than raising """
+        actual_value = get_page_size(get_config("dg%#"))
+        self.assertEqual(actual_value, MAX_PAGE_SIZE)
 
-        self.assertEqual(actual_value, expected_value)
+    def test_negative_int_page_size_field_clamped_to_min(self):
+        """ Verify that a negative page_size is clamped up to MIN_PAGE_SIZE """
+        actual_value = get_page_size(get_config(-10))
+        self.assertEqual(actual_value, MIN_PAGE_SIZE)
 
-    def test_invalid_string_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if invalid string is given in the config """
+    def test_oversized_page_size_field_clamped_to_max(self):
+        """ Verify that a page_size above MAX_PAGE_SIZE is clamped down to MAX_PAGE_SIZE """
+        actual_value = get_page_size(get_config(10000))
+        self.assertEqual(actual_value, MAX_PAGE_SIZE)
 
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config("dg%#"), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format("dg%#"))
 
-    def test_zero_float_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if 0.0 is given in the config """
-
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config(0.0), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format(0.0))
-
-    def test_negative_int_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if negative int is given in the config """
-
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config(-10), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format(-10))
-
-    def test_negative_float_page_size_field(self):
-        """ Verify that exception is raised with proper error message, if negative float is given in the config """
-
-        with self.assertRaises(Exception) as err:
-            get_page_size(get_config(-10.5), DEFAULT_PAGE_SIZE)
-        self.assertEqual(str(err.exception), self.error_message.format(-10.5))
+if __name__ == '__main__':
+    unittest.main()

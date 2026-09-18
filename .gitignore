@@ -20,3 +20,13 @@ tap_twitter_ads/.vscode/settings.json
 test_configuration.py
 tap_target_commands.sh
 tmp/
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+coverage.xml
+*,cover
+.hypothesis/

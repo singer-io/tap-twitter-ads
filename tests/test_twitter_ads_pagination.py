@@ -2,7 +2,8 @@ import tap_tester.connections as connections
 import tap_tester.runner as runner
 import tap_tester.menagerie as menagerie
 from base import TwitterAds
-import json
+from tap_twitter_ads.streams import STREAMS
+
 
 class PaginationTest(TwitterAds):
     """
@@ -14,28 +15,22 @@ class PaginationTest(TwitterAds):
 
     def test_run(self):
         """
-        • Verify that for each stream you can get multiple pages of data.  
-        This requires we ensure more than 1 page of data exists at all times for any given stream.
+        • Verify that for each paginated stream you can get multiple pages of data.
+          This requires we ensure more than 1 page of data exists at all times for
+          any given stream.
         • Verify by pks that the data replicated matches the data we expect.
         """
-        expected_streams = self.expected_streams()
+        # Only streams with `stream.paginated = True` (see streams.py) can
+        # ever return more than one page - singleton/config_ids/config_loop
+        # streams return at most one page by design, so testing pagination
+        # on them would be meaningless. Derived directly from STREAMS instead
+        # of a hardcoded stream-name list so this stays correct automatically
+        # as streams.py evolves.
+        expected_streams = {name for name in self.expected_streams() if STREAMS[name].paginated}
 
-        # For following streams, we are not able to generate enough records. So, skipping those streams from test case.
-        expected_streams = expected_streams - {'cards_image_conversation', 'cards_video_conversation', 'cards_image_direct_message',
-                                            'cards_video_direct_message', 'accounts_daily_report', 'campaigns_daily_report',
-                                            'promoted_accounts', 'cards_image_direct_message', 'account_media', 'targeting_platforms',
-                                            'funding_instruments', 'promotable_users', 'accounts', 'tailored_audiences',
-                                           'targeting_tv_markets', 'targeting_tv_shows'}
-
-        # Skipping `content_catagories` as It does not follow pagination.
-        expected_streams = expected_streams - {'content_categories'}
-
-        # Reduce page_size to 2 due to less data.
-        self.run_test(expected_streams=expected_streams - {"targeting_locations", "targeting_conversations"}, page_size=2)    
-        
-        # Set page_size to 1000 for following streams because these streams contain more than 40000 records.
-        # So, page_size of 2 get a lot of time to get all records.
-        self.run_test(expected_streams={"targeting_locations", "targeting_conversations"}, page_size=1000)
+        # Small page_size so a modest amount of test-account data still spans
+        # multiple pages (X API v2 caps `max_results` at 100 for most endpoints).
+        self.run_test(expected_streams=expected_streams, page_size=2)
 
     def run_test(self, expected_streams, page_size):
 
@@ -67,22 +62,23 @@ class PaginationTest(TwitterAds):
 
                 # expected values
                 expected_primary_keys = self.expected_primary_keys()[stream]
-         
-                # verify that we can paginate with all fields selected
-                record_count_sync = record_count_by_stream.get(stream, 0)
-                self.assertGreater(record_count_sync, page_size,
-                                    msg="The number of records is not over the stream max limit")
 
-                primary_keys_list = [tuple([message.get('data').get(expected_pk) for expected_pk in expected_primary_keys])
-                                        for message in synced_records.get(stream).get('messages')
-                                        if message.get('action') == 'upsert']
+                # verify records are more than page size so multiple pages are exercised
+                sync_records = synced_records.get(stream)
+                record_count_sync = sync_records.get('record_count')
+                self.assertGreater(
+                    record_count_sync, self.PAGE_SIZE,
+                    msg="The number of records is not over the stream max limit, "
+                        "so pagination was not fully tested for stream {}".format(stream))
 
-                primary_keys_list_1 = primary_keys_list[:page_size]
-                primary_keys_list_2 = primary_keys_list[page_size:2*page_size]
-
-                primary_keys_page_1 = set(primary_keys_list_1)
-                primary_keys_page_2 = set(primary_keys_list_2)
-
-                # Verify by primary keys that data is unique for page
-                self.assertTrue(
-                    primary_keys_page_1.isdisjoint(primary_keys_page_2))
+                # verify all records in the target are unique by primary key
+                records_pks_set = {
+                    tuple(message.get('data').get(primary_key) for primary_key in expected_primary_keys)
+                    for message in sync_records.get('messages')
+                }
+                records_pks_list = [
+                    tuple(message.get('data').get(primary_key) for primary_key in expected_primary_keys)
+                    for message in sync_records.get('messages')
+                ]
+                self.assertCountEqual(records_pks_set, records_pks_list,
+                                      msg="We have duplicate records for {}".format(stream))

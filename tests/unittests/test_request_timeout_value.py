@@ -1,166 +1,74 @@
 import unittest
-from unittest import mock
-import tap_twitter_ads
 
-class MockParseArgs:
-    '''Mock the parsed_args() in main'''
-    config = {}
-    state = {}
-    catalog = {}
-    discover = False
+from tap_twitter_ads.client import XApiClient, DEFAULT_REQUEST_TIMEOUT
 
-    def __init__(self, config, state, catalog, discover):
-        self.config = config
-        self.state = state
-        self.catalog = catalog
-        self.discover = discover
+BASE_CONFIG = {
+    'client_id': 'cid',
+    'client_secret': 'csecret',
+    'access_token': 'at',
+    'refresh_token': 'rt',
+}
 
-def get_args(config, state, catalog, discover):
-    '''Return the MockParseArgs object'''
-    return MockParseArgs(config, state, catalog, discover)
 
-@mock.patch("tap_twitter_ads.Client")
-@mock.patch("singer.utils.parse_args")
-class TestTimeoutValue(unittest.TestCase):
-    '''
-    Test that request timeout parameter works properly in various cases
-    '''
+def make_config(**overrides):
+    config = dict(BASE_CONFIG)
+    config.update(overrides)
+    return config
 
-    def test_timeout_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on config value
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': 100}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 100.0)
+class TestRequestTimeoutValue(unittest.TestCase):
+    """
+    Test that XApiClient.request_timeout is resolved correctly in various cases.
 
-    def test_timeout_value_not_in_config(self, mocked_parse_args, mocked_client):
-        """
-            Unit tests to ensure that request timeout is set based default value
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids'}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
+    NOTE: unlike the old OAuth1 Ads tap (timeout threaded through
+    tap_twitter_ads.Client's `options` kwarg), the OAuth2 tap resolves
+    request_timeout directly in XApiClient.__init__ and uses it for every
+    `requests` call - so this is tested against the client directly rather
+    than by mocking main()/parse_args().
+    """
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 300)
+    def test_timeout_value_in_config(self):
+        """ Verify that request timeout is set based on config value """
+        client = XApiClient(make_config(request_timeout=100))
+        self.assertEqual(client.request_timeout, 100.0)
 
-    def test_timeout_string_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on config if string value is given in config
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': '100'}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
+    def test_timeout_value_not_in_config(self):
+        """ Verify that request timeout falls back to the default value """
+        client = XApiClient(make_config())
+        self.assertEqual(client.request_timeout, DEFAULT_REQUEST_TIMEOUT)
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 100)
+    def test_timeout_string_value_in_config(self):
+        """ Verify that request timeout is set based on config if a string value is given """
+        client = XApiClient(make_config(request_timeout='100'))
+        self.assertEqual(client.request_timeout, 100.0)
 
-    def test_timeout_empty_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on default value if empty value is given in config
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': ''}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
+    def test_timeout_empty_value_in_config(self):
+        """ Verify that request timeout falls back to default if an empty value is given """
+        client = XApiClient(make_config(request_timeout=''))
+        self.assertEqual(client.request_timeout, DEFAULT_REQUEST_TIMEOUT)
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 300)
+    def test_timeout_0_value_in_config(self):
+        """ Verify that request timeout falls back to default if 0 is given """
+        client = XApiClient(make_config(request_timeout=0))
+        self.assertEqual(client.request_timeout, DEFAULT_REQUEST_TIMEOUT)
 
-    def test_timeout_0_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on default value if 0 is given in config
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': 0}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
+    def test_timeout_string_0_value_in_config(self):
+        """ Verify that request timeout is set to 0.0 if string "0" is given
+        (only a falsy Python value like int 0 or an empty string falls back
+        to the default - a non-empty string "0" is truthy and gets parsed). """
+        client = XApiClient(make_config(request_timeout="0"))
+        self.assertEqual(client.request_timeout, 0.0)
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 300)
+    def test_timeout_float_value_in_config(self):
+        """ Verify that request timeout is set based on config float value """
+        client = XApiClient(make_config(request_timeout=100.5))
+        self.assertEqual(client.request_timeout, 100.5)
 
-    def test_timeout_string_0_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on default value if string 0  is given in config
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': "0"}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
+    def test_timeout_invalid_string_value_in_config_falls_back_to_default(self):
+        """ Verify that request timeout falls back to default if an invalid string is given """
+        client = XApiClient(make_config(request_timeout="not-a-number"))
+        self.assertEqual(client.request_timeout, DEFAULT_REQUEST_TIMEOUT)
 
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 300)
 
-    def test_timeout_float_value_in_config(self, mocked_parse_args, mocked_client):
-        """ 
-            Unit tests to ensure that request timeout is set based on config float value
-        """
-        mock_config = {'start_date': 'test_start_date',
-                  'consumer_key': 'test_ck',
-                  'consumer_secret': 'test_ck',
-                  'access_token': 'test_at',
-                  'access_token_secret': 'test_ts',
-                  'account_ids': 'test_acc_ids',
-                  'request_timeout': 100.8}
-        # mock parse args
-        mocked_parse_args.return_value = get_args(mock_config, {}, {}, False)
-
-        # function call
-        tap_twitter_ads.main()
-        args, kwargs = mocked_client.call_args
-        # verify that the request was called with expected timeout value
-        self.assertEqual(kwargs.get('options').get('timeout'), 100.8)
+if __name__ == '__main__':
+    unittest.main()

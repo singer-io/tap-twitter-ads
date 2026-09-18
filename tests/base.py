@@ -10,6 +10,11 @@ import pytz
 
 
 class TwitterAds(unittest.TestCase):
+    """Base class for tap-tester integration tests against the OAuth 2.0 X
+    API v2 tap. Streams/config/metadata below reflect tap_twitter_ads.streams
+    (see that module's docstring for the authoritative config-field
+    reference) - keep this in sync when streams.py changes."""
+
     start_date = ""
     START_DATE_FORMAT = "%Y-%m-%dT00:00:00Z"
     BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -19,8 +24,10 @@ class TwitterAds(unittest.TestCase):
     FULL_TABLE = "FULL_TABLE"
     INCREMENTAL = "INCREMENTAL"
     OBEYS_START_DATE = "obey-start-date"
-    PAGE_SIZE = 200
-    account_id = ""
+    PAGE_SIZE = 100
+    # Resolved after the first `users_me` sync/lookup - used as the default
+    # bookmark key for users_me-child streams (see calculated_states_by_stream).
+    default_id = ""
 
     def tap_name(self):
         return "tap-twitter-ads"
@@ -29,39 +36,34 @@ class TwitterAds(unittest.TestCase):
         return "platform.twitter-ads"
 
     def get_credentials(self):
+        """OAuth 2.0 Authorization Code + PKCE credentials - unlike the old
+        OAuth 1.0a Ads API, the refresh_token ROTATES on every use, so CI
+        must persist whatever the tap writes back to config, not just re-read
+        these fixed env vars on every run."""
         return {
-            'consumer_key': os.getenv('TAP_TWITTER_ADS_CONSUMER_KEY'),
-            'consumer_secret': os.getenv('TAP_TWITTER_ADS_CONSUMER_SECRET'),
+            'client_id': os.getenv('TAP_TWITTER_ADS_CLIENT_ID'),
+            'client_secret': os.getenv('TAP_TWITTER_ADS_CLIENT_SECRET'),
             'access_token': os.getenv('TAP_TWITTER_ADS_ACCESS_TOKEN'),
-            'access_token_secret': os.getenv('TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET')
+            'refresh_token': os.getenv('TAP_TWITTER_ADS_REFRESH_TOKEN'),
         }
 
     def get_properties(self, original: bool = True):
-        """Configuration properties required for the tap."""
+        """Configuration properties required for the tap. Only 5 fields are
+        ever REQUIRED (start_date/client_id/client_secret/access_token/
+        refresh_token) - every other id-list/query field below is an OPTIONAL
+        override of a self-default the tap resolves from the authenticated
+        user's own data (see streams.py's module docstring); set via env vars
+        here only so CI can point them at specific ids/queries when desired."""
 
         return_value = {
-            "account_ids": os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS"),
-            "attribution_window": os.getenv("TAP_TWITTER_ADS_ATTRIBUTION_WINDOW"),
-            "with_deleted": os.getenv("TAP_TWITTER_ADS_WITH_DELETED"),
-            "country_codes": os.getenv("TAP_TWITTER_ADS_COUNTRY_CODES"),
-            "start_date": "2019-03-01T00:00:00Z",
+            "start_date": "2020-01-01T00:00:00Z",
             "page_size": self.PAGE_SIZE,
-            "reports": [
-                {
-                    "name": "accounts_daily_report",
-                    "entity": "ACCOUNT",
-                    "segment": "NO_SEGMENT",
-                    "granularity": "HOUR"
-                },
-                {
-                    "name": "campaigns_daily_report",
-                    "entity": "CAMPAIGN",
-                    "segment": "NO_SEGMENT",
-                    "granularity": "HOUR"
-                }
-            ]
+            "tweet_ids": os.getenv("TAP_TWITTER_ADS_TWEET_IDS"),
+            "space_ids": os.getenv("TAP_TWITTER_ADS_SPACE_IDS"),
+            "list_ids": os.getenv("TAP_TWITTER_ADS_LIST_IDS"),
+            "woeids": os.getenv("TAP_TWITTER_ADS_WOEIDS"),
+            "post_search_query": os.getenv("TAP_TWITTER_ADS_POST_SEARCH_QUERY"),
         }
-        self.account_id = os.getenv("TAP_TWITTER_ADS_ACCOUNT_IDS").split(" ")[0]
         if original:
             return return_value
 
@@ -71,116 +73,94 @@ class TwitterAds(unittest.TestCase):
 
     def setUp(self):
         required_env = {
-            "TAP_TWITTER_ADS_CONSUMER_KEY",
-            "TAP_TWITTER_ADS_CONSUMER_SECRET",
+            "TAP_TWITTER_ADS_CLIENT_ID",
+            "TAP_TWITTER_ADS_CLIENT_SECRET",
             "TAP_TWITTER_ADS_ACCESS_TOKEN",
-            "TAP_TWITTER_ADS_ACCESS_TOKEN_SECRET",
-            "TAP_TWITTER_ADS_ACCOUNT_IDS",
-            "TAP_TWITTER_ADS_ATTRIBUTION_WINDOW",
-            "TAP_TWITTER_ADS_WITH_DELETED",
-            "TAP_TWITTER_ADS_COUNTRY_CODES"
+            "TAP_TWITTER_ADS_REFRESH_TOKEN",
         }
         missing_envs = [v for v in required_env if not os.getenv(v)]
         if missing_envs:
             raise Exception("set " + ", ".join(missing_envs))
 
     def expected_metadata(self):
-        """The expected streams and metadata about the streams"""
-        default_metadata = {
-            self.REPLICATION_KEYS: {"updated_at"},
-            self.PRIMARY_KEYS: {"id"},
+        """The expected streams and metadata about the streams - mirrors
+        tap_twitter_ads.streams.STREAMS exactly (key_properties,
+        replication_method, replication_key, parent-tap-stream-id)."""
+        no_replication_key = {self.OBEYS_START_DATE: False}
+        incremental_created_at = {
+            self.REPLICATION_KEYS: {"created_at"},
             self.REPLICATION_METHOD: self.INCREMENTAL,
-            self.OBEYS_START_DATE: True
+            self.OBEYS_START_DATE: True,
         }
 
-        targeting_endpoint_metadata = {
-            self.PRIMARY_KEYS: {"targeting_value"},
-            self.REPLICATION_METHOD: self.FULL_TABLE,
-            self.OBEYS_START_DATE: False
-        }
-        report_metadata = {
-            self.REPLICATION_KEYS: {"end_time"},
-            self.PRIMARY_KEYS: {"__sdc_dimensions_hash_key"},
-            self.REPLICATION_METHOD: self.INCREMENTAL,
-            self.OBEYS_START_DATE: True
-        }
+        def full_table(*primary_keys, parent_stream=None):
+            metadata = {
+                self.PRIMARY_KEYS: set(primary_keys),
+                self.REPLICATION_METHOD: self.FULL_TABLE,
+                **no_replication_key,
+            }
+            if parent_stream:
+                metadata["parent_stream"] = parent_stream
+            return metadata
+
+        def incremental(*primary_keys, parent_stream=None):
+            metadata = {self.PRIMARY_KEYS: set(primary_keys), **incremental_created_at}
+            if parent_stream:
+                metadata["parent_stream"] = parent_stream
+            return metadata
+
         return {
-            'accounts': default_metadata,
-            'account_media': default_metadata,
-            'tracking_tags': default_metadata,
-            "advertiser_business_categories": {
-                self.PRIMARY_KEYS: {"id"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False
-            },
-            "campaigns": default_metadata,
-            "cards": default_metadata,
-            "cards_poll": default_metadata,
-            "cards_image_conversation": default_metadata,
-            "cards_video_conversation": default_metadata,
-            "content_categories": {
-                self.PRIMARY_KEYS: {"id"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False
-            },
-            "funding_instruments": default_metadata,
-            "iab_categories": {
-                self.PRIMARY_KEYS: {"id"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False
-            },
-            "line_items": default_metadata,
-            "targeting_criteria": {
-                # `targeting_criteria` is child stream of line_items stream which is incremental.
-                # We are writing a separate bookmark for the child stream in which we are storing
-                # the bookmark based on the parent's replication key.
-                # But, we are not using any fields from the child record for it.
-                # That's why the `targeting_criteria` stream does not have replication_key but still it is incremental.
-                self.PRIMARY_KEYS: {"line_item_id", "id"},
-                self.REPLICATION_METHOD: self.INCREMENTAL,
-                self.OBEYS_START_DATE: True,
-                "parent_stream": "line_items"
-            },
-            "media_creatives": default_metadata,
-            "preroll_call_to_actions": default_metadata,
-            "promoted_accounts": default_metadata,
-            "promoted_tweets": default_metadata,
-            "promotable_users": default_metadata,
-            "scheduled_promoted_tweets": default_metadata,
-            "tailored_audiences": default_metadata,
-            "targeting_app_store_categories": targeting_endpoint_metadata,
-            "targeting_conversations": targeting_endpoint_metadata,
-            "targeting_devices": targeting_endpoint_metadata,
-            "targeting_events": {
-                self.PRIMARY_KEYS: {"targeting_value"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: True
-            },
-            "targeting_interests": targeting_endpoint_metadata,
-            "targeting_languages": targeting_endpoint_metadata,
-            "targeting_locations": targeting_endpoint_metadata,
-            "targeting_network_operators": targeting_endpoint_metadata,
-            "targeting_platform_versions": targeting_endpoint_metadata,
-            "targeting_platforms": targeting_endpoint_metadata,
-            "targeting_tv_markets":  {
-                self.PRIMARY_KEYS: {"locale"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False
-            },
-            "targeting_tv_shows": {
-                self.PRIMARY_KEYS: {"targeting_value"},
-                self.REPLICATION_METHOD: self.FULL_TABLE,
-                self.OBEYS_START_DATE: False,
-                "parent_stream": "targeting_tv_markets"
-            },
-            "tweets": {
-                self.REPLICATION_KEYS: {"created_at"},
-                self.PRIMARY_KEYS: {"id"},
-                self.REPLICATION_METHOD: self.INCREMENTAL,
-                self.OBEYS_START_DATE: True
-            },
-            "accounts_daily_report": report_metadata,
-            "campaigns_daily_report": report_metadata,
+            # ---- Authenticated-user streams (users_me + its children) ----
+            "users_me": full_table("id"),
+            "account": full_table("account_id"),
+            "usage_tweets": full_table("project_id"),
+            "usage_credits": full_table(),
+            "personalized_trends": full_table("trend_name"),
+            "user_reposts_of_me": full_table("id"),
+            "bots": full_table("id"),
+            "webhooks": full_table("id"),
+            "user_tweets": incremental("id", parent_stream="users_me"),
+            "user_mentions": incremental("id", parent_stream="users_me"),
+            "user_home_timeline": incremental("id", parent_stream="users_me"),
+            "user_liked_tweets": full_table("id", parent_stream="users_me"),
+            "user_bookmarks": full_table("id", parent_stream="users_me"),
+            "user_bookmark_folders": full_table("id", parent_stream="users_me"),
+            "user_followers": full_table("id", parent_stream="users_me"),
+            "user_following": full_table("id", parent_stream="users_me"),
+            "user_blocking": full_table("id", parent_stream="users_me"),
+            "user_muting": full_table("id", parent_stream="users_me"),
+            "user_owned_lists": full_table("id", parent_stream="users_me"),
+            "user_pinned_lists": full_table("id", parent_stream="users_me"),
+            "user_list_memberships": full_table("id", parent_stream="users_me"),
+            "user_followed_lists": full_table("id", parent_stream="users_me"),
+            "user_affiliates": full_table("id", parent_stream="users_me"),
+            "dm_events": full_table("id", parent_stream="users_me"),
+            # ---- Config-driven batch lookups (config_ids) ----
+            "tweets_by_ids": full_table("id"),
+            "spaces_by_ids": full_table("id"),
+            "spaces_by_creator_ids": full_table("id"),
+            # ---- Config-driven loops (config_loop / config_loop_multi) ----
+            "trends_by_woeid": full_table("trend_name"),
+            "compliance_jobs": full_table("id"),
+            "list_by_id": full_table("id"),
+            "list_tweets": full_table("id", parent_stream="list_by_id"),
+            "list_members": full_table("id", parent_stream="list_by_id"),
+            "list_followers": full_table("id", parent_stream="list_by_id"),
+            "space_by_id": full_table("id"),
+            "space_tweets": full_table("id", parent_stream="space_by_id"),
+            "space_buyers": full_table("id", parent_stream="space_by_id"),
+            # ---- Per-post engagement lookups (config_loop_multi over tweet_ids) ----
+            "post_liking_users": full_table("id"),
+            "post_quote_tweets": full_table("id"),
+            "post_reposted_by": full_table("id"),
+            "post_reposts": full_table("id"),
+            # ---- Search / query-driven streams ----
+            "post_search_recent": incremental("id"),
+            "post_search_all": incremental("id"),
+            "post_counts_recent": full_table("start"),
+            "post_counts_all": full_table("start"),
+            "community_notes_search_written": full_table("id"),
+            "community_notes_eligible_posts": full_table("id"),
         }
 
     def expected_streams(self):
@@ -214,8 +194,8 @@ class TwitterAds(unittest.TestCase):
 
     def expected_parent_streams(self):
         """return a dictionary with the key of child stream name and value as the parent stream name"""
-        return {stream: metadata.get('parent_stream') 
-            for stream, metadata in self.expected_metadata().items() 
+        return {stream: metadata.get('parent_stream')
+            for stream, metadata in self.expected_metadata().items()
             if metadata.get('parent_stream')}
 
 #########################
@@ -338,19 +318,30 @@ class TwitterAds(unittest.TestCase):
                 conn_id, catalog, schema, [], non_selected_properties)
 
     def calculated_states_by_stream(self, current_state):
-        timedelta_by_stream = {stream: [0,0,1]  # {stream_name: [days, hours, minutes], ...}
+        """Roll each stream's current bookmark back by a small timedelta so a
+        second sync has new data to pick up. Unlike the old OAuth1 Ads tap
+        (every stream bookmarked under one fixed `account_id` key), OAuth2
+        streams key their bookmark by whatever id/value they were synced
+        under (a parent record id for users_me-children, or the resolved
+        query text for search streams) - so each stream's single bookmark
+        key is discovered from state itself rather than assumed."""
+        timedelta_by_stream = {stream: [0, 0, 1]  # {stream_name: [days, hours, minutes], ...}
                                for stream in self.expected_streams()}
 
-        stream_to_calculated_state = {stream: {self.account_id: ""} for stream in current_state.get('bookmarks', {}).keys()}
-        for stream, state in current_state.get('bookmarks', {}).items():
-            state_as_datetime = dateutil.parser.parse(state[self.account_id])
+        stream_to_calculated_state = {}
+        for stream, bookmarks_by_key in current_state.get('bookmarks', {}).items():
+            stream_to_calculated_state[stream] = {}
+            for bookmark_key, bookmark_value in bookmarks_by_key.items():
+                if not bookmark_value:
+                    continue
+                state_as_datetime = dateutil.parser.parse(bookmark_value)
 
-            days, hours, minutes = timedelta_by_stream[stream]
-            calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
+                days, hours, minutes = timedelta_by_stream.get(stream, [0, 0, 1])
+                calculated_state_as_datetime = state_as_datetime - timedelta(days=days, hours=hours, minutes=minutes)
 
-            calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
+                calculated_state_formatted = dt.strftime(calculated_state_as_datetime, self.BOOKMARK_FORMAT)
 
-            stream_to_calculated_state[stream][self.account_id] = calculated_state_formatted
+                stream_to_calculated_state[stream][bookmark_key] = calculated_state_formatted
 
         return stream_to_calculated_state
 

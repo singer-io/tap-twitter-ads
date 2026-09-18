@@ -1,64 +1,80 @@
 import unittest
-from tap_twitter_ads.streams import TwitterAds
+from unittest import mock
 
-class TestBookmark(unittest.TestCase):
-    """
-    Test the get_bookmark method for different values
-    """
-    stream = "dummy_stream"
+from tap_twitter_ads.sync import get_bookmark, write_bookmark
+
+# NOTE: unlike the old OAuth1 Ads tap (bookmarks keyed by a single fixed
+# `account_id` for every stream, with a special-cased PUBLISHED/SCHEDULED
+# sub-key for the `tweets` stream), OAuth2 streams key their bookmark by
+# whatever id/value they were synced under: a parent record id for
+# users_me-children (e.g. `user_tweets`), or the resolved query text for
+# search streams (e.g. `post_search_recent`). There is no more special-cased
+# stream name - `get_bookmark`/`write_bookmark` are fully generic.
+
+
+class TestGetBookmark(unittest.TestCase):
+    """Test the get_bookmark function for different state shapes."""
+
+    stream = "user_tweets"
     default = "2018-01-28T00:00:00Z"
-    account_id = "account_id"
-    twitter_ads_object = TwitterAds()
-    
-    def test_empty_bookmark(self):
-        """ Test that if an empty state passed in get_bookmark then it returns the default value"""
+    parent_id = "123456"
+
+    def test_empty_state_returns_default(self):
+        """If state is empty, the default (start_date) is returned."""
         state = {}
-        
-        bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
-        
+        bookmark = get_bookmark(state, self.stream, self.parent_id, self.default)
         self.assertEqual(bookmark, self.default)
 
-    def test_empty_bookmark_for_specific_stream(self):
-        """ Test that if the bookmark for particular stream is not found in the state then it returns the default value """
-
-        state = {'bookmark': {'stream_1': '2017-01-28T00:00:00Z'}}
-        
-        bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
-        
+    def test_no_bookmark_for_this_stream_returns_default(self):
+        """If the stream has no bookmark entry at all, the default is returned."""
+        state = {'bookmarks': {'some_other_stream': {self.parent_id: '2017-01-28T00:00:00Z'}}}
+        bookmark = get_bookmark(state, self.stream, self.parent_id, self.default)
         self.assertEqual(bookmark, self.default)
 
-    def test_valid_bookmark(self):
-        """ Test that if the valid bookmark is available in the state then it returns the bookmark value """
+    def test_no_bookmark_for_this_parent_id_returns_default(self):
+        """If the stream has bookmarks, but not for this parent_id, the default is returned."""
+        state = {'bookmarks': {self.stream: {'some_other_id': '2017-01-28T00:00:00Z'}}}
+        bookmark = get_bookmark(state, self.stream, self.parent_id, self.default)
+        self.assertEqual(bookmark, self.default)
 
-        state = {'bookmarks': {self.stream: {self.account_id: "2017-01-28T00:00:00Z"}}}
-        
-        bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
-        
+    def test_valid_bookmark_is_returned(self):
+        """If a bookmark exists for this stream/parent_id, it is returned as-is."""
+        state = {'bookmarks': {self.stream: {self.parent_id: "2017-01-28T00:00:00Z"}}}
+        bookmark = get_bookmark(state, self.stream, self.parent_id, self.default)
         self.assertEqual(bookmark, "2017-01-28T00:00:00Z")
 
-    def test_null_bookmark(self):
-        """ Test that if the bookmark value is None in the state then it returns None"""
+    def test_search_stream_bookmark_keyed_by_query_text(self):
+        """Search streams (post_search_recent, etc.) key their bookmark by the
+        resolved query text rather than a parent record id - get_bookmark is
+        generic enough that this is just a different string key."""
+        query_key = "opensource"
+        state = {'bookmarks': {'post_search_recent': {query_key: "2022-05-01T00:00:00Z"}}}
+        bookmark = get_bookmark(state, 'post_search_recent', query_key, self.default)
+        self.assertEqual(bookmark, "2022-05-01T00:00:00Z")
 
-        state = {'bookmarks': {self.stream: {self.account_id: None}}}
-        
-        bookmark = self.twitter_ads_object.get_bookmark(state, self.stream, self.default, self.account_id)
-        
-        self.assertEqual(bookmark, None)
 
-    def test_only_published_tweets_bookmark(self):
-        """ Test that if the valid bookmark is available for tweets stream then it returns the bookmark value """
+class TestWriteBookmark(unittest.TestCase):
+    """Test the write_bookmark function persists state and flushes it."""
 
-        state = {'bookmarks': {"tweets": {self.account_id: {"PUBLISHED": "2017-01-28T00:00:00Z"}}}}
-        
-        bookmark = self.twitter_ads_object.get_bookmark(state, "tweets", self.default, self.account_id)
-        
-        self.assertEqual(bookmark, {'PUBLISHED': '2017-01-28T00:00:00Z'})
+    stream = "user_tweets"
+    parent_id = "123456"
 
-    def test_tweets_null_bookmark(self):
-        """ Test that if the bookmark value is not available for tweets stream then it returns default value(start date)."""
+    @mock.patch('tap_twitter_ads.sync.singer.write_state')
+    def test_write_bookmark_updates_state_and_flushes(self, mocked_write_state):
+        state = {}
+        write_bookmark(state, self.stream, self.parent_id, "2023-01-01T00:00:00Z")
 
-        state = {'bookmarks': {self.stream: {self.account_id: None}}}
+        self.assertEqual(state['bookmarks'][self.stream][self.parent_id], "2023-01-01T00:00:00Z")
+        mocked_write_state.assert_called_once_with(state)
 
-        bookmark = self.twitter_ads_object.get_bookmark(state, "tweets", self.default, self.account_id)
-        print(bookmark)
-        self.assertEqual(bookmark, self.default)
+    @mock.patch('tap_twitter_ads.sync.singer.write_state')
+    def test_write_bookmark_does_not_clobber_other_parent_ids(self, mocked_write_state):
+        state = {'bookmarks': {self.stream: {'other_id': '2020-01-01T00:00:00Z'}}}
+        write_bookmark(state, self.stream, self.parent_id, "2023-01-01T00:00:00Z")
+
+        self.assertEqual(state['bookmarks'][self.stream]['other_id'], '2020-01-01T00:00:00Z')
+        self.assertEqual(state['bookmarks'][self.stream][self.parent_id], "2023-01-01T00:00:00Z")
+
+
+if __name__ == '__main__':
+    unittest.main()

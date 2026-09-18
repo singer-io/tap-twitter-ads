@@ -1,55 +1,85 @@
 import unittest
-import tap_twitter_ads
-from twitter_ads.client import Client
-from tap_twitter_ads import do_discover
 from unittest import mock
 
-@mock.patch('tap_twitter_ads.discover', side_effect=tap_twitter_ads.discover)
+import tap_twitter_ads
+
+
+class MockParseArgs:
+    """Mock the parsed_args() in main"""
+    def __init__(self, config, state, catalog, discover, config_path=None):
+        self.config = config
+        self.state = state
+        self.catalog = catalog
+        self.discover = discover
+        self.config_path = config_path
+
+
+def get_args(config, state, catalog, discover):
+    return MockParseArgs(config, state, catalog, discover)
+
+
+BASE_CONFIG = {
+    'start_date': '2020-01-01T00:00:00Z',
+    'client_id': 'cid',
+    'client_secret': 'csecret',
+    'access_token': 'at',
+    'refresh_token': 'rt',
+}
+
+
+@mock.patch('tap_twitter_ads.do_discover')
+@mock.patch('singer.utils.parse_args')
 class TestCredCheckInDiscoverMode(unittest.TestCase):
-    # client object for the api call
-    client = Client(
-        consumer_key="test",
-        consumer_secret="test",
-        access_token="test",
-        access_token_secret="test"
-    )
+    """
+    Verify discover mode does NOT require valid/live OAuth 2.0 credentials
+    (streams are statically defined - see discover.py's module docstring),
+    while sync mode DOES check credentials before syncing anything (see
+    __init__.py's main() and XApiClient.check_credentials).
 
-    @mock.patch('tap_twitter_ads.streams.Cursor', side_effect=Exception("Unauthorized access"))
-    def test_invalid_get_resource_401(self, mocked_request, mocked_discover):
-        """
-            Verify exception is raised for no access(401) error code for auth
-            and discover() is not called due to exception.
-        """
+    NOTE: this is the OPPOSITE invariant from the old OAuth1 Ads tap, whose
+    do_discover() made a live API call and failed fast on bad credentials.
+    The OAuth2 tap deliberately does not, so an expired/rotated access_token
+    never blocks `--discover`.
+    """
 
-        with self.assertRaises(Exception) as e:
-            catalog = do_discover([], self.client, "test")
+    @mock.patch('tap_twitter_ads.XApiClient.check_credentials')
+    def test_discover_mode_does_not_check_credentials(self, mocked_check_credentials,
+                                                       mocked_parse_args, mocked_do_discover):
+        mocked_parse_args.return_value = get_args(BASE_CONFIG, {}, None, True)
 
-        # Verify that discover() is not called due to invalid credentials
-        self.assertEqual(mocked_discover.call_count, 0)
-    
-    @mock.patch('tap_twitter_ads.streams.TwitterAds.get_resource')
-    @mock.patch('tap_twitter_ads.Client',  side_effect=Exception("invalid"))
-    def test_valid_credentials_invalid_account_id(self, mocked_client, mocked_get_resource, mocked_discover):
-        """
-            Verify that credential are valid and account ids are invalid, raise exception
-        """
+        tap_twitter_ads.main()
 
-        # Call discover mode
-        with self.assertRaises(Exception) as e:
-            catalog = do_discover([], self.client, "test")
+        # discover() was called...
+        mocked_do_discover.assert_called_once()
+        # ...but credentials were never checked
+        mocked_check_credentials.assert_not_called()
 
-        # Verify that discover is not called due to invalid account ids
-        self.assertEqual(str(e.exception), "Invalid Twitter Ads accounts provided during the configuration:['test']")
-        self.assertEqual(mocked_client.call_count, 0)
+    @mock.patch('tap_twitter_ads.XApiClient.check_credentials')
+    @mock.patch('tap_twitter_ads._sync')
+    def test_sync_mode_checks_credentials_before_syncing(self, mocked_sync, mocked_check_credentials,
+                                                          mocked_parse_args, mocked_do_discover):
+        mocked_parse_args.return_value = get_args(BASE_CONFIG, {}, {'streams': []}, False)
 
-    @mock.patch('tap_twitter_ads.check_credentials',  side_effect="OK")
-    def test_valid_credentials_valid_account_id_200(self, mocked_client, mocked_discover):
-        """
-            Verify discover() is called if auth credentials and account ids are valid
-            and catalog object is returned from discover().
-        """
+        tap_twitter_ads.main()
 
-        # Call discover mode
-        catalog = do_discover([], self.client, "test")
+        # credentials were checked before sync ran
+        mocked_check_credentials.assert_called_once()
+        mocked_sync.assert_called_once()
+        # discover was never invoked in sync mode
+        mocked_do_discover.assert_not_called()
 
-        self.assertEqual(mocked_client.call_count, 1)
+    @mock.patch('tap_twitter_ads.XApiClient.check_credentials', side_effect=Exception('invalid credentials'))
+    @mock.patch('tap_twitter_ads._sync')
+    def test_sync_mode_aborts_if_credentials_invalid(self, mocked_sync, mocked_check_credentials,
+                                                      mocked_parse_args, mocked_do_discover):
+        mocked_parse_args.return_value = get_args(BASE_CONFIG, {}, {'streams': []}, False)
+
+        with self.assertRaises(Exception):
+            tap_twitter_ads.main()
+
+        # sync() must never be reached if credential check fails
+        mocked_sync.assert_not_called()
+
+
+if __name__ == '__main__':
+    unittest.main()

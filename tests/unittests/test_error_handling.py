@@ -1,537 +1,107 @@
 import unittest
-import tap_twitter_ads
-import tap_twitter_ads.exceptions as client
 from unittest import mock
-from twitter_ads.client import Client
-# from tap_twitter_ads.sync import get_resource, post_resource
-from tap_twitter_ads.streams import TwitterAds
+
+import requests
+
+from tap_twitter_ads.exceptions import (
+    raise_for_error_v2,
+    XApiBadRequestError,
+    XApiAuthenticationError,
+    XApiForbiddenError,
+    XApiNotFoundError,
+    XApiRateLimitError,
+    XApiServerError,
+    XApiClientError,
+)
 
 
+def mock_response(status_code, json_body=None, text=''):
+    resp = mock.Mock(spec=requests.Response)
+    resp.status_code = status_code
+    resp.text = text
+    if json_body is None:
+        resp.json.side_effect = ValueError('no body')
+    else:
+        resp.json.return_value = json_body
+    return resp
 
-class Mockresponse(Exception):
-    def __init__(self, status_code, details=[]):
-        self.code = status_code
-        self.details = details
 
-@mock.patch("tap_twitter_ads.streams.Request")
 class TestExceptionHandling(unittest.TestCase):
     """
-        Test cases to verify error is raised with proper message  for get_resource method.
+    Test cases to verify raise_for_error_v2 maps every X API v2 HTTP status
+    code to the correct exception class with a properly formatted message,
+    for both the "title"/"detail" error shape and the "errors": [...] shape.
     """
-    
-    client_obj = Client(
-        consumer_key='test',
-        consumer_secret='test',
-        access_token='test',
-        access_token_secret='test'
-    )
-    
-    test_stream = TwitterAds()
 
-    def setUp(self):
-        patcher = mock.patch('time.sleep')
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(400))
-    def test_400_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 400 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsBadRequestError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 400, Message: The request is missing or has a bad parameter.")
-    
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(400, [{"message":"This message from response 400"}]))
-    def test_400_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 400 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsBadRequestError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), 'HTTP-error-code: 400, Message: This message from response 400')
-        
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(401))   
-    def test_401_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 401 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnauthorizedError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 401, Message: Unauthorized access for the URL.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(401, [{"message":"This message from response 401"}]))   
-    def test_401_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 401 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnauthorizedError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 401, Message: This message from response 401")
- 
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(403))
-    def test_403_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 403 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsForbiddenError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-            
-        self.assertEqual(str(e.exception), "HTTP-error-code: 403, Message: User does not have permission to access the resource.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(403, [{"message":"This message from response 403"}]))
-    def test_403_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 403 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsForbiddenError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 403, Message: This message from response 403")
-    
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(404))
-    def test_404_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 404 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsNotFoundError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-            
-        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: The resource you have specified cannot be found.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(404, [{"message":"This message from response 404"}]))
-    def test_404_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 404 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsNotFoundError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-        
-        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: This message from response 404")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(405))
-    def test_405_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 405 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsMethodNotFoundError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 405, Message: The provided HTTP method is not supported by the URL.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(405, [{"message":"This message from response 405"}]))
-    def test_405_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 405 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsMethodNotFoundError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 405, Message: This message from response 405")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(408))
-    def test_408_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 408 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsRequestCancelledError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: Request is cancelled.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(408, [{"message":"This message from response 408"}]))
-    def test_408_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 408 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsRequestCancelledError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: This message from response 408")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(422))
-    def test_422_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 422 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: The request is well-formed but contains semantic errors.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(422, [{"message":"This message from response 422"}]))
-    def test_422_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 422 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: This message from response 422")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(429))
-    def test_429_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 429 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsClient429Error) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 429, Message: API rate limit exceeded, please retry after some time.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(429, [{"message":"This message from response 429"}]))
-    def test_429_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 429 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsClient429Error) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 429, Message: This message from response 429")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(500))
-    def test_500_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 500 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsInternalServerError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: Internal error.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(500, [{"message":"This message from response 500"}]))
-    def test_500_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 500 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsInternalServerError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: This message from response 500")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(502))
-    def test_502_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 502 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: Bad gateway.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(502, [{"message":"This message from response 502"}]))
-    def test_502_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 502 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: This message from response 502")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(503))
-    def test_503_error_custom_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 503 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsServiceUnavailableError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 503, Message: Service is unavailable.")
-
-    @mock.patch("tap_twitter_ads.streams.Cursor", side_effect=Mockresponse(503, [{"message":"This message from response 503"}]))
-    def test_503_error_response_message(self, mocked_cursor, mocked_request):
-        """
-            Test case to verify 503 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsServiceUnavailableError) as e:
-            self.test_stream.get_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 503, Message: This message from response 503")
-        
-class TestExceptionHandlingForPost(unittest.TestCase):
-    """
-        Test cases to verify error is raised with proper message  for post_resource method.
-    """
-    
-    client_obj = Client(
-        consumer_key='test',
-        consumer_secret='test',
-        access_token='test',
-        access_token_secret='test'
-    )
-    
-    test_stream = TwitterAds()
-
-    def setUp(self):
-        patcher = mock.patch('time.sleep')
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(400))
-    def test_400_error_post_custom_message(self, mocked_request):
-        """
-            Test case to verify 400 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsBadRequestError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 400, Message: The request is missing or has a bad parameter.")
-    
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(400, [{"message":"This message from response 400"}]))
-    def test_400_error_post_error_message(self, mocked_request):
-        """
-            Test case to verify 400 error message from response
-        """
-        
-        with self.assertRaises(client.TwitterAdsBadRequestError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), 'HTTP-error-code: 400, Message: This message from response 400')
-        
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(401))   
-    def test_401_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 401 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnauthorizedError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 401, Message: Unauthorized access for the URL.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(401, [{"message":"This message from response 401"}]))
-    def test_401_error_response_message(self, mocked_request):
-        """
-            Test case to verify 401 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnauthorizedError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 401, Message: This message from response 401")
- 
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(403))
-    def test_403_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 403 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsForbiddenError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-            
-        self.assertEqual(str(e.exception), "HTTP-error-code: 403, Message: User does not have permission to access the resource.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(403, [{"message":"This message from response 403"}]))
-    def test_403_error_response_message(self, mocked_request):
-        """
-            Test case to verify 403 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsForbiddenError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "path")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 403, Message: This message from response 403")
-        
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(404))
-    def test_404_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 404 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsNotFoundError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-            
-        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: The resource you have specified cannot be found.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(404, [{"message":"This message from response 404"}]))
-    def test_404_error_response_message(self, mocked_request):
-        """
-            Test case to verify 404 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsNotFoundError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-        
-        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: This message from response 404")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(405))
-    def test_405_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 405 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsMethodNotFoundError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 405, Message: The provided HTTP method is not supported by the URL.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(405, [{"message":"This message from response 405"}]))
-    def test_405_error_response_message(self, mocked_request):
-        """
-            Test case to verify 405 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsMethodNotFoundError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 405, Message: This message from response 405")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(408))
-    def test_408_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 408 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsRequestCancelledError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: Request is cancelled.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(408, [{"message":"This message from response 408"}]))
-    def test_408_error_response_message(self, mocked_request):
-        """
-            Test case to verify 408 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsRequestCancelledError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 408, Message: This message from response 408")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(422))
-    def test_422_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 422 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: The request is well-formed but contains semantic errors.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(422, [{"message":"This message from response 422"}]))
-    def test_422_error_response_message(self, mocked_request):
-        """
-            Test case to verify 422 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsUnprocessableEntityError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: This message from response 422")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(429))
-    def test_429_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 429 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsClient429Error) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 429, Message: API rate limit exceeded, please retry after some time.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(429, [{"message":"This message from response 429"}]))
-    def test_429_error_response_message(self, mocked_request):
-        """
-            Test case to verify 429 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsClient429Error) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 429, Message: This message from response 429")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(500))
-    def test_500_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 500 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsInternalServerError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: Internal error.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(500, [{"message":"This message from response 500"}]))
-    def test_500_error_response_message(self, mocked_request):
-        """
-            Test case to verify 500 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsInternalServerError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: This message from response 500")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(502))
-    def test_502_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 502 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: Bad gateway.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(502, [{"message":"This message from response 502"}]))
-    def test_502_error_response_message(self, mocked_request):
-        """
-            Test case to verify 502 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsBadGatewayError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 502, Message: This message from response 502")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(503))
-    def test_503_error_custom_message(self, mocked_request):
-        """
-            Test case to verify 503 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsServiceUnavailableError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 503, Message: Service is unavailable.")
-
-    @mock.patch("tap_twitter_ads.streams.Request", side_effect=Mockresponse(503, [{"message":"This message from response 503"}]))
-    def test_503_error_response_message(self, mocked_request):
-        """
-            Test case to verify 503 error message from response
-        """
-
-        with self.assertRaises(client.TwitterAdsServiceUnavailableError) as e:
-            self.test_stream.post_resource("test", self.client_obj, "obj")
-
-        self.assertEqual(str(e.exception), "HTTP-error-code: 503, Message: This message from response 503")
+    def test_400_error_with_detail(self):
+        response = mock_response(400, {'title': 'Bad Request', 'detail': 'The query parameter is invalid.'})
+        with self.assertRaises(XApiBadRequestError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 400, Message: The query parameter is invalid.")
+
+    def test_400_error_with_errors_list(self):
+        response = mock_response(400, {'errors': [{'message': 'This message from response 400'}]})
+        with self.assertRaises(XApiBadRequestError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 400, Message: This message from response 400")
+
+    def test_401_error_custom_message(self):
+        response = mock_response(401, {'title': 'Unauthorized'})
+        with self.assertRaises(XApiAuthenticationError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 401, Message: Unauthorized")
+
+    def test_403_error_custom_message(self):
+        response = mock_response(403, {'title': 'Forbidden'})
+        with self.assertRaises(XApiForbiddenError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 403, Message: Forbidden")
+
+    def test_404_error_custom_message(self):
+        response = mock_response(404, {'title': 'Not Found'})
+        with self.assertRaises(XApiNotFoundError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: Not Found")
+
+    def test_429_error_custom_message(self):
+        response = mock_response(429, {'title': 'Too Many Requests'})
+        with self.assertRaises(XApiRateLimitError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 429, Message: Too Many Requests")
+
+    def test_500_error_maps_to_server_error(self):
+        response = mock_response(500, {'title': 'Internal Server Error'})
+        with self.assertRaises(XApiServerError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 500, Message: Internal Server Error")
+
+    def test_503_error_maps_to_server_error(self):
+        """Any 5xx not explicitly mapped falls back to XApiServerError (retryable)."""
+        response = mock_response(503, {'title': 'Service Unavailable'})
+        with self.assertRaises(XApiServerError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 503, Message: Service Unavailable")
+
+    def test_unmapped_4xx_falls_back_to_client_error(self):
+        """A 4xx code with no explicit mapping (e.g. 422) falls back to the
+        generic non-retryable XApiClientError."""
+        response = mock_response(422, {'title': 'Unprocessable Entity'})
+        with self.assertRaises(XApiClientError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 422, Message: Unprocessable Entity")
+
+    def test_no_json_body_falls_back_to_response_text(self):
+        response = mock_response(400, json_body=None, text='plain text error body')
+        with self.assertRaises(XApiBadRequestError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 400, Message: plain text error body")
+
+    def test_no_body_and_no_text_uses_unknown_error(self):
+        response = mock_response(404, json_body=None, text='')
+        with self.assertRaises(XApiNotFoundError) as e:
+            raise_for_error_v2(response)
+        self.assertEqual(str(e.exception), "HTTP-error-code: 404, Message: Unknown Error")
+
+
+if __name__ == '__main__':
+    unittest.main()

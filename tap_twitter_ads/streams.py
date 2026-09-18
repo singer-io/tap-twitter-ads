@@ -1,1690 +1,681 @@
-# streams.py
-# streams: API URL endpoints to be called
-# properties:
-#   <root node>: Plural stream name for the endpoint
-#   path: API endpoint relative path, when added to the base URL, creates the full path,
-#       default = stream_name
-#   key_properties: Primary key fields for identifying an endpoint record.
-#   replication_method: INCREMENTAL or FULL_TABLE
-#   replication_keys: bookmark_field(s), typically a date-time, used for filtering the results
-#        and setting the state
-#   params: Query, sort, and other endpoint specific parameters; default = {}
-#   data_key: JSON element containing the results list for the endpoint
-#   bookmark_query_field: From date-time field used for filtering the query
-#   bookmark_type: Data type for bookmark, integer or datetime
-import singer
-import time
-import backoff
-from requests.exceptions import ConnectionError
-import functools
-import pytz
-from singer import metrics, metadata, Transformer, utils
-from urllib.parse import urlparse
-from twitter_ads import API_VERSION
-from twitter_ads.cursor import Cursor
-from twitter_ads.http import Request
-from twitter_ads.error import Error
-from twitter_ads.utils import split_list
-from singer.utils import strptime_to_utc
-from datetime import datetime, timedelta
-from tap_twitter_ads.transform import transform_record, transform_report
-import copy
-from tap_twitter_ads.exceptions import raise_for_error
-from tap_twitter_ads.exceptions import TwitterAdsBackoffError
+"""
+Registry of every OAuth 2.0 X API v2 (api.x.com/2) stream this tap
+implements, as real Python classes (one concrete class per stream, each with
+its own JSON schema file `schemas/<tap_stream_id>.json`).
 
-BOOKMARK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
-LOGGER = singer.get_logger()
+Class hierarchy:
+  `Stream` (abstract base - common attributes/defaults, `.parent` and
+  `.schema_file` properties, auto-registration via `__init_subclass__`)
+    -> category base classes, one per `source_type`, encoding the shared
+       sync behavior for that shape of endpoint (see sync.py):
+         SingletonStream, SingletonListStream, ParentStream, ConfigIdsStream,
+         ConfigIdsSelfDefaultStream(ConfigIdsStream), ConfigLoopStream,
+         ConfigLoopMultiStream, SearchStream
+    -> concrete stream classes (UsersMe, UserTweets, ...), each setting only
+       the attributes that differ per endpoint (path, key_properties, auth,
+       params, source_key, replication_method/key, required_params, ...).
+       Each concrete class's docstring states, in one line, what the stream
+       returns.
 
-# Currently syncing sets the stream currently being delivered in the state.
-# If the integration is interrupted, this state property is used to identify
-#  the starting point to continue from.
-# Reference: https://github.com/singer-io/singer-python/blob/master/singer/bookmarks.py#L41-L46
-def update_currently_syncing(state, stream_name):
-    if (stream_name is None) and ('currently_syncing' in state):
-        del state['currently_syncing']
-    else:
-        singer.set_currently_syncing(state, stream_name)
-    singer.write_state(state)
-    LOGGER.info('Stream: {} - Currently Syncing'.format(stream_name))
+The tap runs with just `start_date`, `client_id`, `client_secret`,
+`access_token`, and `refresh_token`. Streams that look up a specific id/list
+(tweets, spaces, lists, trends, searches, ...) default to the authenticated
+user's own data unless told otherwise.
 
-def get_page_size(config, default_page_size):
+Field-selection constants below intentionally request a curated, useful
+subset of each object's ~20-50 available fields (not every field X offers)
+to keep schemas/records readable; add to these lists to pull more fields.
+
+Where a stream's data requires the resource owner's own permissions and the
+endpoint does NOT support an App-only Bearer token, `auth='user'` is used
+(rotating OAuth2UserToken flow). Every other stream uses `auth='app'`
+(App-only Bearer, minted from client_id/client_secret - never rotates, so
+it carries none of the refresh_token loss risk).
+"""
+
+DEFAULT_PAGE_SIZE = 100
+ID_CHUNK_SIZE = 100  # X API v2 caps most `ids`/`usernames` query params at 100
+
+USER_FIELDS = (
+    'id,name,username,created_at,description,location,url,profile_image_url,'
+    'protected,verified,verified_type,pinned_post_id,most_recent_post_id,public_metrics'
+)
+
+POST_FIELDS = (
+    'id,text,created_at,author_id,conversation_id,in_reply_to_user_id,lang,source,'
+    'possibly_sensitive,reply_settings,edit_history_post_ids,public_metrics,'
+    'referenced_posts,attachments'
+)
+
+LIST_FIELDS = 'id,name,description,owner_id,created_at,private,follower_count,member_count'
+
+SPACE_FIELDS = (
+    'id,title,state,created_at,started_at,ended_at,scheduled_start,lang,'
+    'creator_id,host_ids,speaker_ids,invited_user_ids,participant_count,'
+    'subscriber_count,is_ticketed,topic_ids,updated_at'
+)
+
+TREND_FIELDS = 'trend_name,tweet_count'
+PERSONALIZED_TREND_FIELDS = 'trend_name,post_count,category,trending_since'
+COMPLIANCE_JOB_FIELDS = (
+    'id,type,status,created_at,name,upload_url,upload_expires_at,download_url,'
+    'download_expires_at,resumable'
+)
+USAGE_FIELDS = 'cap_reset_day,project_cap,project_id,project_usage,daily_project_usage'
+USAGE_CREDITS_FIELDS = 'total_balance,free_balance,prepaid_balance'
+DM_EVENT_FIELDS = ('id,event_type,text,dm_conversation_id,sender_id,participant_ids,'
+                    'created_at,referenced_posts,attachments')
+COMMUNITY_NOTE_FIELDS = 'id,status,scoring_status,info,test_result'
+POST_COUNT_FIELDS = 'start,end,post_count'
+WEBHOOK_FIELDS = 'id,url,valid,created_at'
+
+
+class Stream:
+    """Abstract base for every X API v2 stream - do not instantiate directly.
+
+    Concrete subclasses (bottom of this file) set the per-endpoint
+    attributes (`tap_stream_id`, `path`, `key_properties`, `auth`, `params`,
+    ...); category base classes just below set the shared defaults/behavior
+    for one `source_type` (see sync.py for how each source_type is synced).
     """
-    This function will get page size from config.
-    It will return the default value if an empty string is given, 
-    and will raise an exception if invalid value is given.
-    """
-    page_size = config.get('page_size', default_page_size)
-    if page_size == "":
-        return default_page_size
-    try:
-        if type(page_size) == float:
-            raise Exception
 
-        page_size = int(page_size)
-        if page_size <= 0:
-            raise Exception
-        return page_size
-    except Exception:
-        raise Exception("The entered page size ({}) is invalid".format(page_size))
-
-# Backoff ConnectionError and TwitterAdsBackoffError (429, 500, 502, 503) up to 5 times.
-def retry_pattern(fnc):
-    @backoff.on_exception(backoff.constant,
-                          (ConnectionError, TwitterAdsBackoffError),
-                          max_tries=5,
-                          interval=60,
-                          jitter=None
-                          )
-    @functools.wraps(fnc)
-    def wrapper(*args, **kwargs):
-        return fnc(*args, **kwargs)
-    return wrapper
-
-# Added decorator over functions of twitter SDK to perform backoff over SDK method Request.perform the method
-Request.perform = retry_pattern(Request.perform)
-
-# parent class for all the stream classes
-class TwitterAds:
     tap_stream_id = None
-    replication_method = None
-    replication_key = []
-    key_properties = []
-    to_replicate = True
-    date_dictionary = False
     path = None
+    key_properties = []
+    replication_method = 'FULL_TABLE'
+    replication_key = None
+    auth = 'app'
     params = {}
-    parent = None
-    data_key = None
-    bookmark_query_field_from = None
-    bookmark_query_field_to = None
-    pagination = False
-    parent_path = None
-    parent_id_field = None
-    url = "https://ads-api.twitter.com"
-    
-    # Reference: https://developer.twitter.com/en/docs/ads/campaign-management/overview/placements#placements
-    PLACEMENTS = [
-        'ALL_ON_TWITTER', # All possible placement types on Twitter
-        'PUBLISHER_NETWORK' # On the Twitter Audience Platform
-    ]
-    
-    # function to fetch schema in sync mode
-    def write_schema(self, catalog, stream_name):
-        stream = catalog.get_stream(stream_name)
-        schema = stream.schema.to_dict()
-        LOGGER.info('Stream: {} - Writing schema'.format(stream_name))
-        try:
-            singer.write_schema(stream_name, schema, stream.key_properties)
-        except OSError as err:
-            LOGGER.error('Stream: {} - OS Error writing schema'.format(stream_name))
-            raise err
-    
-    # function to fetch record in sync mode    
-    def write_record(self, stream_name, record, time_extracted):
-        try:
-            singer.messages.write_record(
-                stream_name, record, time_extracted=time_extracted)
-        except OSError as err:
-            LOGGER.error('Stream: {} - OS Error writing record'.format(stream_name))
-            LOGGER.error('record: {}'.format(record))
-            raise err
-        
-    # get bookmark for the stream
-    def get_bookmark(self, state, stream, default, account_id):
-        # default only populated on initial sync
-        if (state is None) or ('bookmarks' not in state):
-            return default
-        return (
-            state
-            .get('bookmarks', {})
-            .get(stream, {})
-            .get(account_id, default) # Return account wise bookmark value
-        )
-        
-    # to read bookmarks in sync mode     
-    def write_bookmark(self, state, stream, value, account_id, sub_type=None):
-        if 'bookmarks' not in state:
-            state['bookmarks'] = {}
-
-        state['bookmarks'][stream] = state['bookmarks'].get(stream, {}) # Retrieve existing bookmark value
-
-        if sub_type:
-            # Store bookmark value for each sub_type of tweets stream
-            # Retrieve existing bookmark value if it is available in the state or assign empty dict.
-            # Because we need to write bookmark value for each sub type inside the account_id. 
-            state['bookmarks'][stream][account_id] = state['bookmarks'].get(stream, {}).get(account_id, {})
-            state['bookmarks'][stream][account_id][sub_type] = value
-            LOGGER.info('Stream: {} Subtype: {} - Write state, bookmark value: {}'.format(stream, sub_type, value))
-
-        else:
-            state['bookmarks'][stream][account_id] = value # Update bookmark value for particular account
-            LOGGER.info('Stream: {} - Write state, bookmark value: {}'.format(stream, value))
-        
-        singer.write_state(state)
-            
-    # Converts cursor object to dictionary
-    def obj_to_dict(self, obj):
-        if not hasattr(obj, "__dict__"):
-            return obj
-        result = {}
-        for key, val in obj.__dict__.items():
-            if key.startswith("_"):
-                continue
-            element = []
-            if isinstance(val, list):
-                for item in val:
-                    element.append(self.obj_to_dict(item))
-            else:
-                element = self.obj_to_dict(val)
-            result[key] = element
-        return result
-
-    # pylint: disable=line-too-long
-    # API SDK Requests: https://github.com/twitterdev/twitter-python-ads-sdk/blob/master/examples/manual_request.py
-    # pylint: enable=line-too-long
-    @retry_pattern
-    def get_resource(self, stream_name, client, path, params=None):
-        resource = '/{}/{}'.format(API_VERSION, path)
-        
-        try:
-            request = Request(client, 'get', resource, params=params) #, stream=True)
-            cursor = Cursor(None, request)
-        except Exception as e:
-            LOGGER.error('Stream: {} - ERROR: {}'.format(stream_name, e))
-            # see tap-twitter-ads.client for more details
-            raise_for_error(e)
-        return cursor
-
-    # method for HTTP post api call
-    @retry_pattern
-    def post_resource(self, report_name, client, path, params=None, body=None):
-        resource = '/{}/{}'.format(API_VERSION, path)
-        try:
-            response = Request(client, 'post', resource, params=params, body=body).perform()
-        except Exception as e:
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
-            # see tap-twitter-ads.client for more details
-            raise_for_error(e)
-        response_body = response.body # Dictionary response of POST request
-        return response_body
-
-    # fetch async data from the gives url
-    @retry_pattern
-    def get_async_data(self, report_name, client, url):
-        resource = urlparse(url)
-        domain = '{0}://{1}'.format(resource.scheme, resource.netloc)
-        try:
-            response = Request(
-                client, 'get', resource.path, domain=domain, raw_body=True, stream=True).perform()
-            response_body = response.body
-        except Exception as e:
-            # see tap-twitter-ads.client for more details
-            LOGGER.error('Report: {} - ERROR: {}'.format(report_name, e))
-            raise_for_error(e)
-        return response_body
-
-    # List selected fields from stream catalog
-    def get_selected_fields(self, catalog, stream_name):
-        stream = catalog.get_stream(stream_name)
-        mdata = metadata.to_map(stream.metadata)
-        mdata_list = singer.metadata.to_list(mdata)
-        selected_fields = []
-        for entry in mdata_list:
-            field = None
-            try:
-                field = entry['breadcrumb'][1]
-                if entry.get('metadata', {}).get('selected', False):
-                    selected_fields.append(field)
-            except IndexError:
-                pass
-        return selected_fields
-
-    # remove minutes from dattime and set it to 0
-    def remove_minutes_local(self, dttm, tzone):
-        new_dttm = dttm.astimezone(tzone).replace(
-            minute=0, second=0, microsecond=0)
-        return new_dttm
-
-    # remove hours from datetime and set it to 0
-    def remove_hours_local(self, dttm, timezone):
-        new_dttm = dttm.astimezone(timezone).replace(
-            hour=0, minute=0, second=0, microsecond=0)
-        return new_dttm
-
-    def get_maximum_bookmark(self, bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, record_counter, last_dttm):
-        """
-        Return a maximum replication key value that is available in the record.
-        """
-        max_bookmark_value = None
-        if bookmark_value_str:
-            bookmark_value = strptime_to_utc(record_dict.get(bookmark_field))
-            
-            # If first record then set it as max_bookmark_value
-            if record_counter == 0:
-                max_bookmark_dttm = bookmark_value
-                max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
-        else:
-            # pylint: disable=line-too-long
-            LOGGER.info('Stream: {} - NO BOOKMARK, bookmark_field: {}, record: {}'.format(
-                stream_name, bookmark_field, record_dict))
-            # pylint: enable=line-too-long
-            bookmark_value = last_dttm
-        
-        return bookmark_value, max_bookmark_value
-
-    # from sync.py
-    def sync_endpoint(self, 
-                    client,
-                    catalog,
-                    state,
-                    start_date,
-                    stream_name,
-                    endpoint_config,
-                    tap_config,
-                    account_id=None,
-                    parent_ids=None,
-                    child_streams=None,
-                    selected_streams=[]):
-        
-        # endpoint_config variables
-        path = getattr(endpoint_config, 'path', None)
-        id_fields = (hasattr(endpoint_config, 'key_properties') or []) and endpoint_config.key_properties
-        parent_id_field = next(iter(id_fields), None) # first ID field
-        params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
-
-        # If page_size found in config then used it else use default page size.
-        if params.get('count') and tap_config.get('page_size'):
-            params['count'] = get_page_size(tap_config, params.get('count'))
-
-        bookmark_field = next(iter((hasattr(endpoint_config, 'replication_keys') or []) and endpoint_config.replication_keys), None)
-        datetime_format = hasattr(endpoint_config,'datetime_format') and endpoint_config.datetime_format
-        if hasattr(endpoint_config, 'sub_types'):
-            sub_types = endpoint_config.sub_types
-        else:
-            sub_types = ['none']
-        children = (hasattr(endpoint_config, 'children')) and endpoint_config.children
-
-        if parent_ids is None:
-            parent_ids = []
-        if child_streams is None:
-            child_streams = []
-
-        # tap config variabless
-        # Twitter Ads does not accept True/False as boolean, must be true/false
-        with_deleted = tap_config.get('with_deleted', 'true')
-        country_codes = tap_config.get('country_codes', '').replace(' ', '')
-        country_code_list = country_codes.split(',')
-        LOGGER.info('country_code_list = {}'.format(country_code_list)) # COMMENT OUT
-        if sub_types == ['{country_code_list}']:
-            sub_types = country_code_list
-        LOGGER.info('sub_types = {}'.format(sub_types)) # COMMENT OUT
-
-        # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, stream_name, start_date, account_id)
-        if not last_datetime or last_datetime is None:
-            last_datetime = start_date
-
-        # NOTE: Risk of syncing indefinitely and never getting bookmark
-        max_bookmark_value = last_datetime
-
-        total_records = 0
-        # Loop through sub_types (for tweets endpoint), all other endpoints loop once
-        for sub_type in sub_types:
-
-            if stream_name == "tweets" and last_datetime != start_date:
-                # Tweets stream contains two separate bookmarks for each sub_type(PUBLISHED, SCHEDULED)
-                last_dttm = strptime_to_utc(last_datetime.get(sub_type, start_date))
-            else:
-                last_dttm = strptime_to_utc(last_datetime)
-
-            LOGGER.info('sub_type = {}'.format(sub_type)) # COMMENT OUT
-
-            # Reset params and path for each sub_type
-            params = {}
-            new_params = {}
-            path = None
-            params = (hasattr(endpoint_config, 'params') or {}) and endpoint_config.params
-            path = hasattr(endpoint_config, 'path') and endpoint_config.path
-
-            # Replace keys/ids in path and params
-            add_account_id = False # Initial default
-            if '{account_id}' in path:
-                add_account_id = True
-                path = path.replace('{account_id}', account_id)
-
-            parent_id_list=""
-            if parent_ids:
-                parent_id_list = ','.join(map(str, parent_ids))
-                path = path.replace('{parent_ids}', parent_id_list)
-            key = None
-            val = None
-            for key, val in list(params.items()):
-                new_val = val
-                if isinstance(val, str):
-                    if key == 'with_deleted':
-                        new_val = val.replace('{with_deleted}', str(with_deleted).lower())
-                    if '{account_ids}' in val:
-                        new_val = val.replace('{account_ids}', account_id)
-                    if '{parent_ids}' in val:
-                        new_val = val.replace('{parent_ids}', parent_id_list)
-                    if '{start_date}' in val:
-                        new_val = val.replace('{start_date}', start_date)
-                    if '{country_codes}' in val:
-                        new_val = val.replace('{country_codes}', country_codes)
-                    if '{sub_type}' in val:
-                        new_val = val.replace('{sub_type}', sub_type)
-                new_params[key] = new_val
-            LOGGER.info('Stream: {} - Request URL: {}/{}/{}'.format(
-                stream_name, self.url, API_VERSION, path))
-            LOGGER.info('Stream: {} - Request params: {}'.format(stream_name, new_params))
-
-            # API Call
-            cursor = self.get_resource(stream_name, client, path, new_params)
-
-            # cursor is an object like a generator(yield). First, it will be iterated for the parent stream with 
-            # the parent's bookmark. But, for the child also we want to iterate through all parent records 
-            # based on the child bookmark and collect parent_ids. That's why we are making a cursor copy before the parent iteration.
-            cursor_child = copy.deepcopy(cursor) # Cursor for children to retrieve parent_ids
-
-            # time_extracted: datetime when the data was extracted from the API
-            time_extracted = utils.now()
-
-            # Get stream metadata from catalog (for masking and validation)
-            stream = catalog.get_stream(stream_name)
-            schema = stream.schema.to_dict()
-            stream_metadata = metadata.to_map(stream.metadata)
-
-            i = 0
-            with metrics.record_counter(stream_name) as counter:
-                # Sync only selected stream. When only child stream is selected(parent stream is not selected), 
-                # at that time this condition may become False.
-                if stream_name in selected_streams:
-                    # Loop thru cursor records, break out if no more data or bookmark_value < last_dttm
-                    for record in cursor:
-                        # Get dictionary for record
-                        record_dict = self.obj_to_dict(record)
-                        if not record_dict:
-                            # Finish looping
-                            LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
-                            break
-
-                        # Get record's bookmark_value
-                        # All bookmarked requests are sorted by updated_at descending
-                        #   'sort_by': ['updated_at-desc']
-                        # The first record is the max_bookmark_value
-                        if bookmark_field:
-                            bookmark_value_str = record_dict.get(bookmark_field)
-                            bookmark_value, max_bookmark_value_str = self.get_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, stream_name, i, last_dttm)
-
-                            if i == 0 and sub_type != "SCHEDULED": # SCHEDULED type tweets response do not contain records in sorted order.
-                                # If first record then set it as max_bookmark_value
-                                max_bookmark_value = max_bookmark_value_str
-
-                            # Bookmark mechanism for SCHEDULED type tweets
-                            if sub_type == "SCHEDULED":
-                                if not max_bookmark_dttm:
-                                    # Assign maximum bookmark value to last saved state
-                                    max_bookmark_dttm = last_dttm
-                                    max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
-
-                                if bookmark_value >= max_bookmark_dttm:
-                                    # If replication key value of current record greater than maximum bookmark then update it.
-                                    max_bookmark_dttm = bookmark_value
-                                    max_bookmark_value = max_bookmark_dttm.strftime(BOOKMARK_FORMAT)
-
-                                if bookmark_value < last_dttm:
-                                    # Skip record if replication value less than last saved state
-                                    continue
-
-                            elif bookmark_value < last_dttm:
-                                # Finish looping
-                                LOGGER.info('Stream: {} - Finished Looping, no more data'.format(stream_name))
-                                break
-
-                        else:
-                            bookmark_value = last_dttm
-
-                        # Check for PK fields
-                        for key in id_fields:
-                            if not record_dict.get(key):
-                                LOGGER.info('Stream: {} - Missing key {} in record: {}'.format(
-                                    stream_name, key, record))
-
-                            # Transform record from transform.py
-                            prepared_record = transform_record(stream_name, record_dict)
-
-                            # Add account_id to record
-                            if add_account_id:
-                                prepared_record['account_id'] = account_id
-
-                        # Transform record with Singer Transformer
-                        with Transformer() as transformer:
-                            transformed_record = transformer.transform(
-                                prepared_record,
-                                schema,
-                                stream_metadata)
-
-                            self.write_record(stream_name, transformed_record, time_extracted=time_extracted)
-                            counter.increment()
-
-
-                            # Increment counters
-                            i = i + 1
-                            total_records = total_records + 1
-
-                            # End: for record in cursor
-                        # End: with metrics as counter
-
-                    # Update the state with the max_bookmark_value for the tweets stream
-                    if stream_name == "tweets":
-                        self.write_bookmark(state, stream_name, max_bookmark_value, account_id, sub_type)
-                        max_bookmark_dttm = None
-
-            # Loop through children and chunks of parent_ids
-            if children:
-                for child_stream_name in children:
-                    child_endpoint_config = STREAMS[child_stream_name]
-                    if child_stream_name in child_streams:
-                        update_currently_syncing(state, child_stream_name)
-                        # pylint: disable=line-too-long
-                        LOGGER.info('Child Stream: {} - START Syncing, parent_stream: {}, account_id: {}'.format(
-                            child_stream_name, stream_name, account_id))
-                        # pylint: enable=line-too-long
-                        # Write schema and log selected fields for stream
-                        self.write_schema(catalog, child_stream_name)
-                        selected_fields = self.get_selected_fields(catalog, child_stream_name)
-                        LOGGER.info('Child Stream: {} - selected_fields: {}'.format(
-                            child_stream_name, selected_fields))
-
-                        total_child_records = 0
-                        child_total_records = 0
-                        # parent_id_limit: max list size for parent_ids
-                        # parent_id_limit = child_endpoint_config.get('parent_ids_limit', 1)
-                        if hasattr(child_endpoint_config, 'parent_ids_limit'):
-                            parent_id_limit = child_endpoint_config.parent_ids_limit
-                        else:
-                            parent_id_limit = 1
-
-                        # Bookmark for child stream
-                        child_last_datetime = self.get_bookmark(state, child_stream_name, start_date, account_id)
-                        child_last_dttm = strptime_to_utc(child_last_datetime)
-
-                        child_max_bookmark_value = None
-                        child_counter = 0
-                        # Loop thru cursor records, break out if no more data or child_bookmark_value < child_last_dttm
-                        for record in cursor_child:
-                            # Get dictionary for record
-                            record_dict = self.obj_to_dict(record)
-
-                            # Get record's bookmark_value
-                            # All bookmarked requests are sorted by updated_at descending
-                            #   'sort_by': ['updated_at-desc']
-                            # The first record is the max_bookmark_value
-                            if bookmark_field:
-                                bookmark_value_str = record_dict.get(bookmark_field)
-                                child_bookmark_value, max_bookmark_value_str = self.get_maximum_bookmark(bookmark_value_str, datetime_format, record_dict, bookmark_field, child_stream_name, child_counter, child_last_dttm)
-                                
-                                if child_counter == 0:
-                                    # If first record then set it as max_bookmark_value
-                                    child_max_bookmark_value = max_bookmark_value_str
-
-                                if child_bookmark_value < child_last_dttm:
-                                    # Skip all records from now onwards because the replication key value in record is less than last saved bookmark value.
-                                    # Records are in descending order of bookmark value.
-                                    # Finish looping
-                                    LOGGER.info('Stream: {} - Finished, bookmark value < last datetime'.format(
-                                        stream_name))
-                                    break
-                            else:
-                                child_bookmark_value = child_last_dttm
-
-                            # Append parent_id to parent_ids
-                            parent_id = record_dict.get(parent_id_field)
-                            parent_ids.append(parent_id)
-
-                            child_counter = child_counter + 1
-                        # End: for record in cursor
-
-                        chunk = 0 # chunk number
-                        # Make chunks of parent_ids
-                        for chunk_ids in split_list(parent_ids, parent_id_limit):
-                            # pylint: disable=line-too-long
-                            LOGGER.info('Child Stream: {} - Syncing, chunk#: {}, parent_stream: {}, parent chunk_ids: {}'.format(
-                                child_stream_name, chunk, stream_name, chunk_ids))
-                            # pylint: enable=line-too-long
-
-                            child_total_records = self.sync_endpoint(
-                                client=client,
-                                catalog=catalog,
-                                state=state,
-                                start_date=start_date,
-                                stream_name=child_stream_name,
-                                endpoint_config=child_endpoint_config,
-                                tap_config=tap_config,
-                                account_id=account_id,
-                                parent_ids=chunk_ids,
-                                child_streams=child_streams,
-                                selected_streams=selected_streams)
-
-                            # pylint: disable=line-too-long
-                            LOGGER.info('Child Stream: {} - Finished chunk#: {}, parent_stream: {}'.format(
-                                child_stream_name, chunk, stream_name))
-                            # pylint: enable=line-too-long
-                            total_child_records = total_child_records + child_total_records
-                            chunk = chunk + 1
-                            # End: for chunk in parent_id_chunks
-
-                        # pylint: disable=line-too-long
-                        LOGGER.info('Child Stream: {} - FINISHED Syncing, parent_stream: {}, account_id: {}'.format(
-                            child_stream_name, stream_name, account_id))
-                        # pylint: enable=line-too-long
-                        LOGGER.info('Child Stream: {} - total_records: {}'.format(
-                            child_stream_name, total_child_records))
-                        update_currently_syncing(state, stream_name)
-                        # End: if child_stream_name in child_streams
-
-                        # Update the state with the max_bookmark_value for the child stream if parent is incremental
-                        if bookmark_field:
-                            self.write_bookmark(state, child_stream_name, child_max_bookmark_value, account_id)
-
-                    # End: for child_stream_name in children.items()
-                # End: if children
-
-            # pylint: disable=line-too-long
-            LOGGER.info('Stream: {}, Account ID: {} - FINISHED Sub Type: {}, Total Sub Type Records: {}'.format(
-                stream_name, account_id, sub_type, i))
-            # pylint: enable=line-too-long
-            # End: for sub_type in sub_types
-
-        LOGGER.info('Stream: {}, max_bookmark_value: {}'.format(stream_name, max_bookmark_value))
-
-        # Update the state with the max_bookmark_value for all other streams except tweets stream if stream is selected
-        if bookmark_field  and stream_name in selected_streams and stream_name != "tweets":
-            self.write_bookmark(state, stream_name, max_bookmark_value, account_id)
-
-        return total_records
-        # End sync_endpoint
-
-# Class for all reports streams
-class Reports(TwitterAds):
-    # syncing for all report streams
-    def sync_report(self,
-                    client,
-                    catalog,
-                    state,
-                    start_date,
-                    report_name,
-                    report_config,
-                    tap_config,
-                    account_id=None,
-                    country_ids=None,
-                    platform_ids=None):
-
-        # PROCESS:
-        # Outer-outer loop (in sync): loop through accounts
-        # Outer loop (in sync): loop through reports selected in catalog
-        #   Each report definition: name, entity, segment, granularity
-        #
-        # For each Report:
-        # 1. Determine start/end dates and date windows (rounded, limited, timezone);
-        #     Loop through date windows from bookmark datetime to current datetime.
-        # 2. Based on Entity Type, Get active entity ids for date window and placement.
-        # 3. POST ASYNC Job to Queue to get queued_job_id with the following Loops:
-        #     A. For each Sub Type Loop (Country or Platform)
-        #     B. For each Placement w/ Entity ID Set Loop
-        #     C. For each Chunk of 20 Entity IDs
-        # 4. GET ASYNC Job Statuses and Download URLs (when complete)
-        # 5. Download Data from URLs and Sync data to target
-
-        # report parameters
-        report_entity = report_config.get('entity')
-        report_segment = report_config.get('segment', 'NO_SEGMENT')
-        report_granularity = report_config.get('granularity', 'DAY')
-
-        LOGGER.info('Report: {}, Entity: {}, Segment: {}, Granularity: {}'.format(
-            report_name, report_entity, report_segment, report_granularity))
-
-        # Set report_segment NO_SEGMENT to None
-        if report_segment == 'NO_SEGMENT':
-            report_segment = None
-        # MEDIA_CREATIVE and ORGANIC_TWEET don't allow Segmentation
-        if report_entity in ['MEDIA_CREATIVE', 'ORGANIC_TWEET']:
-            report_segment = None
-
-        # Initialize account and get account timezone
-        account = client.accounts(account_id)
-        tzone = account.timezone
-        timezone = pytz.timezone(tzone)
-        LOGGER.info('Account ID: {} - timezone: {}'.format(account_id, tzone))
-
-        # Bookmark datetimes
-        last_datetime = self.get_bookmark(state, report_name, start_date, account_id)
-        last_dttm = strptime_to_utc(last_datetime).astimezone(timezone)
-        max_bookmark_value = last_datetime
-
-        # Get absolute start and end times
-        attribution_window = int(tap_config.get('attribution_window', '14'))
-        abs_start, abs_end = self.get_absolute_start_end_time(
-            report_granularity, timezone, last_dttm, attribution_window)
-
-        # Initialize date window
-        if report_segment:
-            # Max is 45 days (segmented), set lower to avoid date/hour rounding issues
-            date_window_size = 42 # is the Answer
-        else:
-            # Max is 90 days, set lower to avoid date/hour rounding issues
-            date_window_size = 85
-        window_start = abs_start
-        window_end = (abs_start + timedelta(days=date_window_size))
-        window_start_rounded = None
-        window_end_rounded = None
-        if window_end > abs_end:
-            window_end = abs_end
-
-        # DATE WINDOW LOOP
-        while window_start != abs_end:
-            entity_id_sets = []
-            entity_ids = []
-            window_start_rounded, window_end_rounded = self.round_times(
-                report_granularity, timezone, window_start, window_end)
-            window_start_str = window_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
-            window_end_str = window_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
-
-            LOGGER.info('Report: {} - Date window: {} to {}'.format(
-                report_name, window_start_str, window_end_str))
-
-            # ACCOUNT cannot use active_entities endpoint; but single Account ID
-            if report_entity == 'ACCOUNT':
-                entity_ids.append(account_id)
-                entity_id_sets = [
-                    {
-                        'placement': 'ALL_ON_TWITTER',
-                        'entity_ids': entity_ids,
-                        'start_time': window_start_str,
-                        'end_time': window_end_str
-                    },
-                    {
-                        'placement': 'PUBLISHER_NETWORK',
-                        'entity_ids': entity_ids,
-                        'start_time': window_start_str,
-                        'end_time': window_end_str
-                    }
-                ]
-
-            # ORGANIC_TWEET cannot use active_entities endpoint
-            elif report_entity == 'ORGANIC_TWEET':
-                LOGGER.info('Report: {} - GET ORGANINC_TWEET entity_ids'.format(report_name))
-                entity_ids = self.get_tweet_entity_ids(client, account_id, window_start, window_end)
-                entity_id_set = { # PUBLISHER_NETWORK is invalid placement for ORGANIC_TWEET
-                    'placement': 'ALL_ON_TWITTER',
-                    'entity_ids': entity_ids,
-                    'start_time': window_start_str,
-                    'end_time': window_end_str
-                }
-                entity_id_sets.append(entity_id_set)
-
-            # ALL OTHER entity types use active_entities endpoint
-            else:
-                # Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/active-entities
-                # GET active_entities for entity
-                LOGGER.info('Report: {} - GET {} active_entities entity_ids'.format(
-                    report_name, report_entity))
-                active_entities_path = 'stats/accounts/{account_id}/active_entities'.replace(
-                    '{account_id}', account_id)
-                active_entities_params = {
-                    'entity': report_entity,
-                    'start_time': window_start_str,
-                    'end_time': window_end_str
-                }
-                LOGGER.info('Report: {} - active_entities GET URL: {}/{}/{}'.format(
-                    report_name, self.url, API_VERSION, active_entities_path))
-                LOGGER.info('Report: {} - active_entities params: {}'.format(
-                    report_name, active_entities_params))
-                active_entities = self.get_resource('active_entities', client, active_entities_path, \
-                    active_entities_params)
-
-                # Get active entity_ids, start, end for each placement type for date window
-                entity_id_sets = self.get_active_entity_sets(active_entities,
-                                                            report_name,
-                                                            account_id,
-                                                            report_entity,
-                                                            report_granularity,
-                                                            timezone,
-                                                            window_start,
-                                                            window_end)
-                # End: else (active_entities)
-
-            LOGGER.info('entity_id_sets = {}'.format(entity_id_sets)) # COMMENT OUT
-
-            # ASYNC report POST requests
-            # Get metric_groups for report_entity and report_egment
-            metric_groups = self.get_entity_metric_groups(report_entity, report_segment)
-
-            # Set sub_type and sub_type_ids for sub_type loop
-            if report_segment in ('LOCATIONS', 'METROS', 'POSTAL_CODES', 'REGIONS'):
-                sub_type = 'countries'
-                sub_type_ids = country_ids
-            elif report_segment in ('DEVICES', 'PLATFORM_VERSIONS'):
-                sub_type = 'platforms'
-                sub_type_ids = platform_ids
-            else: # NO sub_type (loop once thru sub_type loop)
-                sub_type = 'none'
-                sub_type_ids = ['none']
-
-            # POST ALL Queued ASYNC Jobs for Report
-            queued_job_ids = []
-            # SUB_TYPE LOOP
-            # Countries or Platforms loop (or single loop for sub_types = ['none'])
-            for sub_type_id in sub_type_ids:
-                sub_type_queued_job_ids = []
-                if sub_type == 'platforms':
-                    country_id = None
-                    platform_id = sub_type_id
-                elif sub_type == 'countries':
-                    country_id = sub_type_id
-                    platform_id = None
-                else:
-                    country_id = None
-                    platform_id = None
-
-                # ENTITY ID SET LOOP
-                for entity_id_set in entity_id_sets:
-                    entity_id_set_queued_job_ids = []
-                    LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
-                    placement = entity_id_set.get('placement')
-                    entity_ids = entity_id_set.get('entity_ids', [])
-                    start_time = entity_id_set.get('start_time')
-                    end_time = entity_id_set.get('end_time')
-                    LOGGER.info('Report: {} - placement: {}, start_time: {}, end_time: {}'.format(
-                        report_name, placement, start_time, end_time))
-
-                    # POST ASYNC JOBS for ENTITY ID SET (possibly many chunks)
-                    entity_id_set_queued_job_ids = self.post_queued_async_jobs(client,
-                                                                        account_id,
-                                                                        report_name,
-                                                                        report_entity,
-                                                                        entity_ids,
-                                                                        report_granularity,
-                                                                        report_segment,
-                                                                        metric_groups,
-                                                                        placement,
-                                                                        start_time,
-                                                                        end_time,
-                                                                        country_id,
-                                                                        platform_id)
-                    sub_type_queued_job_ids = sub_type_queued_job_ids + entity_id_set_queued_job_ids
-                    # End: for entity_id_set in entity_id_sets
-                
-                queued_job_ids = queued_job_ids + sub_type_queued_job_ids
-                # End: for sub_type_id in sub_type_ids
-
-            # WHILE JOBS STILL RUNNING LOOP, GET ASYNC JOB STATUS
-            # GET ASYNC Status Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#get-stats-jobs-accounts-account-id 
-            async_results_urls = []
-            async_results_urls = self.get_async_results_urls(client, account_id, report_name, queued_job_ids)
-            LOGGER.info('async_results_urls = {}'.format(async_results_urls)) # COMMENT OUT
-
-            # Get stream_metadata from catalog (for Transformer masking and validation below)
-            stream = catalog.get_stream(report_name)
-            schema = stream.schema.to_dict()
-            stream_metadata = metadata.to_map(stream.metadata)
-
-            # ASYNC RESULTS DOWNLOAD / PROCESS LOOP
-            # RISK: What if some reports error or don't finish?
-            # Possibly move this code block withing ASYNC Status Check
-            total_records = 0
-            for async_results_url in async_results_urls:
-
-                # GET DOWNLOAD DATA FROM URL
-                LOGGER.info('Report: {} - GET async data from URL: {}'.format(
-                    report_name, async_results_url))
-                async_data = self.get_async_data(report_name, client, async_results_url)
-                # LOGGER.info('async_data = {}'.format(async_data)) # COMMENT OUT
-
-                # time_extracted: datetime when the data was extracted from the API
-                time_extracted = utils.now()
-
-                # TRANSFORM REPORT DATA
-                transformed_data = []
-                transformed_data = transform_report(report_name, async_data, account_id)
-                # LOGGER.info('transformed_data = {}'.format(transformed_data)) # COMMENT OUT
-                if transformed_data is None or transformed_data == []:
-                    LOGGER.info('Report: {} - NO TRANSFORMED DATA for URL: {}'.format(
-                        report_name, async_results_url))
-
-                # PROCESS RESULTS TO TARGET RECORDS
-                with metrics.record_counter(report_name) as counter:
-                    for record in transformed_data:
-                        # Transform record with Singer Transformer
-
-                        # Evalueate max_bookmark_value
-                        end_time = record.get('end_time') # String
-                        end_dttm = strptime_to_utc(end_time) # Datetime
-                        max_bookmark_dttm = strptime_to_utc(max_bookmark_value) # Datetime
-                        if end_dttm > max_bookmark_dttm: # Datetime comparison
-                            max_bookmark_value = end_time # String
-
-                        with Transformer() as transformer:
-                            transformed_record = transformer.transform(
-                                record,
-                                schema,
-                                stream_metadata)
-
-                            self.write_record(report_name, transformed_record, time_extracted=time_extracted)
-                            counter.increment()
-
-                # Increment total_records
-                total_records = total_records + counter.value
-                # End: for async_results_url in async_results_urls
-
-            # Update the state with the max_bookmark_value for the date window
-            self.write_bookmark(state, report_name, max_bookmark_value, account_id)
-
-            # Increment date window
-            window_start = window_end
-            window_end = window_start + timedelta(days=date_window_size)
-            if window_end > abs_end:
-                window_end = abs_end
-            # End: date window
-
-        return total_records
-        # End sync_report
-
-    # GET Metric Groups allowed for each Entity, w/ Segment constraints
-    # Metrics & Segmentation: https://developer.twitter.com/en/docs/ads/analytics/overview/metrics-and-segmentation
-    # Google Sheet summary: https://docs.google.com/spreadsheets/d/1Cn3B1TPZOjg9QhnnF44Myrs3W8hNOSyFRH6qn8SCc7E/edit?usp=sharing
-    def get_entity_metric_groups(self, report_entity, report_segment):
-        # Entity type: Set metric_groups, instantiate object
-        all_metric_groups = [
-            'ENGAGEMENT',
-            'BILLING',
-            'VIDEO',
-            'MEDIA',
-            'WEB_CONVERSION',
-            'MOBILE_CONVERSION',
-            'LIFE_TIME_VALUE_MOBILE_CONVERSION'
-        ]
-        metric_groups = None
-        # Undocumented rule: CONVERSION_TAGS report segment only allows WEB_CONVERSION metric group
-        if report_segment == 'CONVERSION_TAGS' and report_entity in \
-            ['ACCOUNT', 'CAMPAIGN', 'LINE_ITEM', 'PROMOTED_TWEET']:
-            metric_groups = ['WEB_CONVERSION']
-
-        elif report_entity == 'ACCOUNT':
-            metric_groups = ['ENGAGEMENT']
-
-        elif report_entity == 'FUNDING_INSTRUMENT':
-            metric_groups = ['ENGAGEMENT', 'BILLING']
-
-        elif report_entity == 'CAMPAIGN':
-            metric_groups = all_metric_groups
-
-        elif report_entity == 'LINE_ITEM':
-            metric_groups = all_metric_groups
-
-        elif report_entity == 'PROMOTED_TWEET':
-            metric_groups = all_metric_groups
-
-        elif report_entity == 'PROMOTED_ACCOUNT':
-            metric_groups = all_metric_groups
-
-        elif report_entity == 'MEDIA_CREATIVE':
-            metric_groups = all_metric_groups
-
-        elif report_entity == 'ORGANIC_TWEET':
-            metric_groups = ['ENGAGEMENT', 'VIDEO']
-
-        return metric_groups
-
-
-    # Round start and end times based on granularity and timezone
-    def round_times(self, report_granularity, timezone, start=None, end=None):
-        start_rounded = None
-        end_rounded = None
-        # Round min_start, max_end to hours or dates
-        if report_granularity == 'HOUR': # Round min_start/end to hour
-            if start:
-                start_rounded = self.remove_minutes_local(start - timedelta(hours=1), timezone)
-            if end:
-                end_rounded = self.remove_minutes_local(end + timedelta(hours=1), timezone)
-        else: # DAY, TOTAL, Round min_start, max_end to date
-            if start:
-                start_rounded = self.remove_hours_local(start  - timedelta(days=1), timezone)
-            if end:
-                end_rounded = self.remove_hours_local(end + timedelta(days=1), timezone)
-        return start_rounded, end_rounded
-
-
-    # Determine absolute start and end times w/ attribution_window constraint
-    # abs_start/end and window_start/end must be rounded to nearest hour or day (granularity)
-    def get_absolute_start_end_time(self, report_granularity, timezone, last_dttm, attribution_window):
-        now_dttm = utils.now().astimezone(timezone)
-        delta_days = (now_dttm - last_dttm).days
-        if delta_days < attribution_window:
-            start = now_dttm - timedelta(days=attribution_window)
-        else:
-            start = last_dttm
-        abs_start, abs_end = self.round_times(report_granularity, timezone, start, now_dttm)
-        return abs_start, abs_end
-
-
-    # Organic Tweets may not use Active Entities endpoint
-    # GET Published Organic Tweet Entity IDs within date window
-    def get_tweet_entity_ids(self, client, account_id, window_start, window_end):
-        entity_ids = []
-        tweet_config = STREAMS.get('tweets')
-        tweet_path = hasattr(tweet_config, 'path') and tweet_config.path.replace('{account_id}', account_id)
-        datetime_format = hasattr(tweet_config, 'datetime_format') and tweet_config.datetime_format
-
-        # Set params for PUBLISHED ORGANIC_TWEETs
-        tweet_params = hasattr(tweet_config, 'params') and tweet_config.params
-        tweet_params['tweet_type'] = 'PUBLISHED'
-        tweet_params['timeline_type'] = 'ORGANIC'
-        tweet_params['with_deleted'] = 'false'
-        tweet_params['trim_user'] = 'true'
-
-        tweet_cursor = self.get_resource('tweets', client, tweet_path, tweet_params)
-        # Loop thru organic tweets to get entity_ids (if in date range)
-        for tweet in tweet_cursor:
-            entity_id = tweet['id']
-            created_at = tweet['created_at']
-            created_dttm = datetime.strptime(created_at, datetime_format)
-            if created_dttm <= window_end and created_dttm >= window_start:
-                entity_ids.append(entity_id)
-            elif created_dttm < window_start:
-                break
-
-        return entity_ids
-
-
-    # GET Active Entity IDs w/in date window (rounded for granularity) for an entity type
-    def get_active_entity_sets(self, active_entities, report_name, account_id, report_entity, \
-        report_granularity, timezone, window_start, window_end):
-
-        entity_id_sets = []
-        entity_id_set = {}
-        # Abstract out the Get Entity IDs and start/end date
-        # PLACEMENT LOOP
-        # Get entity_ids for each placement type
-        for placement in self.PLACEMENTS: # ALL_ON_TWITTER, PUBLISHER_NETWORK
-            # LOGGER.info('placement = {}'.format(placement)) # COMMENT OUT
-            entity_ids = []
-            min_start = None
-            max_end = None
-            min_start_rounded = window_start
-            max_end_rounded = window_end
-            ent = 0
-            for active_entity in active_entities:
-                active_entity_dict = self.obj_to_dict(active_entity)
-                LOGGER.info('active_entity_dict = {}'.format(active_entity_dict)) # COMMENT OUT
-                entity_id = active_entity_dict.get('entity_id')
-                entity_placements = active_entity_dict.get('placements', [])
-                entity_start = strptime_to_utc(active_entity_dict.get(
-                    'activity_start_time')).astimezone(timezone)
-                entity_end = strptime_to_utc(active_entity_dict.get(
-                    'activity_end_time')).astimezone(timezone)
-
-                # If active_entity in placement, append; and determine min/max dates
-                if placement in entity_placements:
-                    entity_ids.append(entity_id)
-                    if ent == 0:
-                        min_start = entity_start
-                        max_end = entity_end
-                    if entity_start < min_start:
-                        min_start = entity_start
-                    if entity_end > max_end:
-                        max_end = entity_end
-                    ent = ent + 1
-                    # End: if placement in entity_placements
-                # End: for active_entity in active_entities
-
-            # Round min_start, max_end to hours or dates
-            min_start_rounded, max_end_rounded = self.round_times(
-                report_granularity, timezone, min_start, max_end)
-
-            # Adjust for window start/end
-            if min_start_rounded:
-                if min_start_rounded < window_start:
-                    min_start_rounded = window_start
-            else:
-                min_start_rounded = window_start
-
-            if max_end_rounded:
-                if max_end_rounded > window_end:
-                    max_end_rounded = window_end
-            else:
-                max_end_rounded = window_end
-
-            if entity_ids != []:
-                entity_id_set = {
-                    'placement': placement,
-                    'entity_ids': entity_ids,
-                    'start_time': min_start_rounded.strftime('%Y-%m-%dT%H:%M:%S%z'),
-                    'end_time': max_end_rounded.strftime('%Y-%m-%dT%H:%M:%S%z')
-                }
-                LOGGER.info('entity_id_set = {}'.format(entity_id_set)) # COMMENT OUT
-                entity_id_sets.append(entity_id_set)
-
-            # End: for placement in PLACEMENTS
-
-        return entity_id_sets
-
-
-    # POST QUEUED ASYNC JOB
-    # pylint: disable=line-too-long
-    # ASYNC Analytics Reference: https://developer.twitter.com/en/docs/ads/analytics/guides/asynchronous-analytics
-    # ASYNC POST Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#post-stats-jobs-accounts-account-id
-    # Report Parameters:
-    #  entity_type: required, 1 and only 1 per request
-    #  entity_ids: required, 1 to 20 per request
-    #  metric_groups: required, 1 or more per request (valid combinations based on entity_type)
-    #  segments: optional, 0 or 1 allowed, based on entity_type
-    #    NO segmentation allowed for: MEDIA_CREATIVE and ORGANIC_TWEETS
-    #    country: country targeting value, required for segment = LOCATIONS, POSTAL_CODES, REGIONS, METROS?
-    #    platform: platform targeting value, required for segment = DEVICES, PLATFORM_VERSIONS
-    #  placements: required, 1 and only 1 per request; but loop thru 2: ALL_ON_TWITTER, PUBLISHER_NETWORK
-    #  granularity: required; HOUR, DAY, or TOTAL; 1 and only 1 per request
-    #  start_date - end_date: required, have to be rounded to the hour
-    #      limited to 45 day windows (for SEGMENT queries), 90 days (for non-SEGMENTED)
-    # pylint: enable=line-too-long
-    def post_queued_async_jobs(self, client, account_id, report_name, report_entity, entity_ids, report_granularity, \
-        report_segment, metric_groups, placement, start_time, end_time, country_id, platform_id):
-        queued_job_ids = []
-        # CHUNK ENTITY_IDS LOOP
-        chunk = 0 # chunk number
-        # Make chunks of 20 of entity_ids
-        for chunk_ids in split_list(entity_ids, 20):
-            # POST async_queued_job for report entity chunk_ids
-            # Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#post-stats-jobs-accounts-account-id
-            LOGGER.info('Report: {} - POST ASYNC queued_job, chunk#: {}'.format(
-                report_name, chunk))
-            queued_job_path = 'stats/jobs/accounts/{account_id}'.replace(
-                '{account_id}', account_id)
-            queued_job_params = {
-                # Required params
-                'entity': report_entity,
-                'entity_ids': ','.join(map(str, chunk_ids)),
-                'metric_groups': ','.join(map(str, metric_groups)),
-                'placement': placement,
-                'granularity': report_granularity,
-                'start_time': start_time,
-                'end_time': end_time,
-                # Optional params
-                'segmentation_type': report_segment,
-                'country': country_id,
-                'platform': platform_id
-            }
-            LOGGER.info('Report: {} - queued_job POST URL: {}/{}/{}'.format(
-                report_name, self.url, API_VERSION, queued_job_path))
-            LOGGER.info('Report: {} - queued_job params: {}'.format(
-                report_name, queued_job_params))
-
-            # POST queued_job: asynchronous job
-            queued_job = self.post_resource('queued_job', client, queued_job_path, \
-                queued_job_params)
-
-            queued_job_data = queued_job.get('data')
-            queued_job_id = queued_job_data.get('id_str')
-            queued_job_ids.append(queued_job_id)
-            LOGGER.info('queued_job_ids = {}'.format(queued_job_ids)) # COMMENT OUT
-            # End: for chunk_ids in entity_ids
-        return queued_job_ids
-
-
-    def get_async_results_urls(self, client, account_id, report_name, queued_job_ids):
-        # WHILE JOBS STILL RUNNING LOOP, GET ASYNC JOB STATUS
-        # GET ASYNC Status Reference: https://developer.twitter.com/en/docs/ads/analytics/api-reference/asynchronous#get-stats-jobs-accounts-account-id 
-        jobs_still_running = True # initialize
-        j = 1 # job status check counter
-        async_results_urls = []
-        while len(queued_job_ids) > 0 and jobs_still_running and j <= 20:
-            # Wait 15 sec for async reports to finish
-            wait_sec = 15
-            LOGGER.info('Report: {} - Waiting {} sec for async job(s) to finish'.format(
-                report_name, wait_sec))
-            time.sleep(wait_sec)
-
-            # GET async_job_status
-            LOGGER.info('Report: {} - GET async_job_statuses'.format(report_name))
-            async_job_statuses_path = 'stats/jobs/accounts/{account_id}'.replace(
-                '{account_id}', account_id)
-            async_job_statuses_params = {
-                # What is the concurrent job_id limit?
-                'job_ids': ','.join(map(str, queued_job_ids)),
-                'count': 1000,
-                'cursor': None
-            }
-            LOGGER.info('Report: {} - async_job_statuses GET URL: {}/{}/{}'.format(
-                report_name, self.url, API_VERSION, async_job_statuses_path))
-            LOGGER.info('Report: {} - async_job_statuses params: {}'.format(
-                report_name, async_job_statuses_params))
-            async_job_statuses = self.get_resource('async_job_statuses', client, async_job_statuses_path, \
-                async_job_statuses_params)
-
-            jobs_still_running = False
-            for async_job_status in async_job_statuses:
-                job_status_dict = self.obj_to_dict(async_job_status)
-                job_id = job_status_dict.get('id_str')
-                job_status = job_status_dict.get('status')
-                if job_status == 'PROCESSING':
-                    jobs_still_running = True
-                elif job_status == 'SUCCESS':
-                    LOGGER.info('Report: {} - job_id: {}, finished running (SUCCESS)'.format(
-                        report_name, job_id))
-                    job_results_url = job_status_dict.get('url')
-                    async_results_urls.append(job_results_url)
-                    # LOGGER.info('job_results_url = {}'.format(job_results_url)) # COMMENT OUT
-                    # Remove job_id from queued_job_ids
-                    queued_job_ids.remove(job_id)
-                # End: async_job_status in async_job_statuses
-            j = j + 1 # increment job status check counter
-            # End: async_job_status in async_job_statuses
-        return async_results_urls
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/accounts#accounts
-class Accounts(TwitterAds):
-    tap_stream_id = "accounts"
-    path = 'accounts'
-    data_key = 'data'
+    required_params = {}
+    paginated = True
+    source_key = None  # meaning depends on source_type - see category classes below
+    id_query_param = None
+    chunk_size = ID_CHUNK_SIZE
+    source_type = None
+
+    _registry = {}
+
+    def __init_subclass__(cls, **kwargs):
+        """Auto-register every concrete (tap_stream_id-bearing) subclass into
+        `Stream._registry`, so `STREAMS` never needs a manually-maintained
+        list of stream classes to stay in sync with."""
+        super().__init_subclass__(**kwargs)
+        if cls.tap_stream_id:
+            Stream._registry[cls.tap_stream_id] = cls
+
+    @property
+    def schema_file(self):
+        """Every stream owns its own schema JSON file: schemas/<tap_stream_id>.json."""
+        return self.tap_stream_id
+
+    @property
+    def parent(self):
+        """Only 'parent' streams have a true parent STREAM (used for
+        parent-tap-stream-id catalog metadata and for locating children via
+        `_children_of()` in sync.py). Other source types also set
+        `source_key`, but to something other than a stream id, so it must
+        NOT be exposed as `.parent`."""
+        return self.source_key if self.source_type == 'parent' else None
+
+
+# ==========================================================================
+# Category base classes - one per source_type, shared sync behavior/defaults
+# ==========================================================================
+
+class SingletonStream(Stream):
+    """One record, no id needed, `data` is a single object."""
+    source_type = 'singleton'
+    paginated = False
+
+
+class SingletonListStream(Stream):
+    """One call, no id needed, `data` is an array of records (all emitted)."""
+    source_type = 'singleton_list'
+    paginated = False
+
+
+class ParentStream(Stream):
+    """`{id}` in `path` comes from a parent stream's record id (`source_key`
+    holds that parent stream's tap_stream_id)."""
+    source_type = 'parent'
+
+
+class ConfigIdsStream(Stream):
+    """Batch lookup: `{id_query_param}` populated (chunked) from a list of ids
+    (`source_key` names the field holding them)."""
+    source_type = 'config_ids'
+    paginated = False
+
+
+class ConfigIdsSelfDefaultStream(ConfigIdsStream):
+    """Like ConfigIdsStream, but falls back to the authenticated user's own id
+    if no ids are given."""
+    source_type = 'config_ids_self_default'
+
+
+class ConfigLoopStream(Stream):
+    """Loop over a list of ids (`source_key`); each id is BOTH its own
+    emitted record (via `{id}` in path) AND a parent id for this stream's
+    children."""
+    source_type = 'config_loop'
+    paginated = False
+
+
+class ConfigLoopMultiStream(Stream):
+    """Loop over a list of ids (`source_key`); each id's response `data` is
+    an array of records, all emitted (no parent relationship, e.g. trends).
+    Supports `paginated=True` (loops pagination per id too)."""
+    source_type = 'config_loop_multi'
+
+
+class SearchStream(Stream):
+    """One or more required query params (`required_params`); if any resolve
+    to None the stream is skipped (with a warning, not silently). Supports
+    `paginated=True` and, if `replication_key` is set, INCREMENTAL
+    bookmarking keyed by the resolved query value itself."""
+    source_type = 'search'
+
+
+# ==========================================================================
+# Concrete streams
+# ==========================================================================
+
+# ---- Authenticated-user singletons -------------------------------------
+class UsersMe(SingletonStream):
+    """The authenticated user's own profile."""
+    tap_stream_id = 'users_me'
+    path = '/2/users/me'
     key_properties = ['id']
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS}
+
+
+class Account(SingletonStream):
+    """The authenticated user's X Developer Platform account info."""
+    tap_stream_id = 'account'
+    path = '/2/account'
+    key_properties = ['account_id']
+    auth = 'user'
+
+
+class UsageTweets(SingletonStream):
+    """Post-consumption usage for the current project. Requires a genuine
+    App-only Bearer Token to actually succeed - a minted token is rejected."""
+    tap_stream_id = 'usage_tweets'
+    path = '/2/usage/tweets'
+    key_properties = ['project_id']
+    auth = 'app'
+    params = {'usage.fields': USAGE_FIELDS}
+
+
+class UsageCredits(SingletonStream):
+    """Pay-as-you-go credit balance for the current project."""
+    tap_stream_id = 'usage_credits'
+    path = '/2/usage/credits'
+    key_properties = []
+    auth = 'user'
+
+
+class PersonalizedTrends(SingletonListStream):
+    """Trending topics personalized for the authenticated user."""
+    tap_stream_id = 'personalized_trends'
+    path = '/2/users/personalized_trends'
+    key_properties = ['trend_name']
+    auth = 'user'
+    params = {'personalized_trend.fields': PERSONALIZED_TREND_FIELDS}
+
+
+class UserRepostsOfMe(SingletonListStream):
+    """Posts of the authenticated user that have been reposted by others."""
+    tap_stream_id = 'user_reposts_of_me'
+    path = '/2/users/reposts_of_me'
+    key_properties = ['id']
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class Bots(SingletonListStream):
+    """Bot accounts associated with this app. Requires a genuine App-only
+    Bearer Token to actually succeed - a minted token is rejected."""
+    tap_stream_id = 'bots'
+    path = '/2/bots'
+    key_properties = ['id']
+    auth = 'app'
+    params = {'user.fields': USER_FIELDS}
+
+
+class Webhooks(SingletonListStream):
+    """Webhooks registered for this app."""
+    tap_stream_id = 'webhooks'
+    path = '/2/webhooks'
+    key_properties = ['id']
+    auth = 'user'
+    params = {'webhook_config.fields': WEBHOOK_FIELDS}
+
+
+# ---- Children of users_me (parent id = authenticated user's id) --------
+class UserTweets(ParentStream):
+    """Posts authored by the authenticated user. INCREMENTAL on `created_at`."""
+    tap_stream_id = 'user_tweets'
+    path = '/2/users/{id}/tweets'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'account_ids': '{account_ids}',
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    replication_key = 'created_at'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/account-media#account-media
-class AccountMedia(TwitterAds):
-    tap_stream_id = "account_media"
-    path =  'accounts/{account_id}/account_media'
-    data_key =  'data'
-    key_properties =  ['id']
-    replication_method =  'INCREMENTAL'
-    replication_keys =  ['updated_at']
-    params =  {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
 
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/advertiser-business-categories#advertiser-business-categories
-class AdvertiserBusinessCategories(TwitterAds):
-    tap_stream_id = "advertiser_business_categories"
-    path = 'advertiser_business_categories'
-    data_key = 'data'
+class UserMentions(ParentStream):
+    """Posts mentioning the authenticated user. INCREMENTAL on `created_at`."""
+    tap_stream_id = 'user_mentions'
+    path = '/2/users/{id}/mentions'
     key_properties = ['id']
-    replication_method = 'FULL_TABLE'
-    params = {}
-
-# Reference: https://developer.twitter.com/en/docs/twitter-ads-api/campaign-management/api-reference/tracking-tags
-class TrackingTags(TwitterAds):
-    tap_stream_id = "tracking_tags"
-    path = 'accounts/{account_id}/tracking_tags'
-    data_key = 'data'
-    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    replication_key = 'created_at'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/campaigns#campaigns
-class Campaigns(TwitterAds):
-    tap_stream_id = "campaigns"
-    path = 'accounts/{account_id}/campaigns'
-    data_key = 'data'
+
+class UserLikedTweets(ParentStream):
+    """Posts liked by the authenticated user."""
+    tap_stream_id = 'user_liked_tweets'
+    path = '/2/users/{id}/liked_tweets'
     key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserBookmarks(ParentStream):
+    """Posts bookmarked by the authenticated user."""
+    tap_stream_id = 'user_bookmarks'
+    path = '/2/users/{id}/bookmarks'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserFollowers(ParentStream):
+    """Users following the authenticated user."""
+    tap_stream_id = 'user_followers'
+    path = '/2/users/{id}/followers'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserFollowing(ParentStream):
+    """Users the authenticated user follows."""
+    tap_stream_id = 'user_following'
+    path = '/2/users/{id}/following'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserBlocking(ParentStream):
+    """Users blocked by the authenticated user."""
+    tap_stream_id = 'user_blocking'
+    path = '/2/users/{id}/blocking'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserMuting(ParentStream):
+    """Users muted by the authenticated user."""
+    tap_stream_id = 'user_muting'
+    path = '/2/users/{id}/muting'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserOwnedLists(ParentStream):
+    """Lists owned by the authenticated user."""
+    tap_stream_id = 'user_owned_lists'
+    path = '/2/users/{id}/owned_lists'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'list.fields': LIST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserPinnedLists(ParentStream):
+    """Lists pinned by the authenticated user."""
+    tap_stream_id = 'user_pinned_lists'
+    path = '/2/users/{id}/pinned_lists'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    paginated = False
+    params = {'list.fields': LIST_FIELDS}
+
+
+class UserListMemberships(ParentStream):
+    """Lists the authenticated user is a member of."""
+    tap_stream_id = 'user_list_memberships'
+    path = '/2/users/{id}/list_memberships'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'list.fields': LIST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserFollowedLists(ParentStream):
+    """Lists the authenticated user follows."""
+    tap_stream_id = 'user_followed_lists'
+    path = '/2/users/{id}/followed_lists'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'list.fields': LIST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class DmEvents(ParentStream):
+    """Direct Message events visible to the authenticated user."""
+    tap_stream_id = 'dm_events'
+    path = '/2/dm_events'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'dm_event.fields': DM_EVENT_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserAffiliates(ParentStream):
+    """Accounts affiliated with the authenticated user (e.g. represented brands)."""
+    tap_stream_id = 'user_affiliates'
+    path = '/2/users/{id}/affiliates'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserBookmarkFolders(ParentStream):
+    """Bookmark folders owned by the authenticated user."""
+    tap_stream_id = 'user_bookmark_folders'
+    path = '/2/users/{id}/bookmarks/folders'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
+    params = {'max_results': DEFAULT_PAGE_SIZE}
+
+
+class UserHomeTimeline(ParentStream):
+    """The authenticated user's reverse-chronological home timeline.
+    INCREMENTAL on `created_at`."""
+    tap_stream_id = 'user_home_timeline'
+    path = '/2/users/{id}/timelines/reverse_chronological'
+    key_properties = ['id']
+    source_key = 'users_me'
+    auth = 'user'
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    replication_key = 'created_at'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
 
-# Reference: https://developer.twitter.com/en/docs/twitter-ads-api/creatives/api-reference/cards#cards
-class Cards(TwitterAds):
-    tap_stream_id = "cards"
-    path = 'accounts/{account_id}/cards'
-    data_key = 'data'
+
+# ---- Batch lookups (no parent needed) ------------------------------------
+class TweetsByIds(ConfigIdsStream):
+    """Posts looked up by id, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
+    tap_stream_id = 'tweets_by_ids'
+    path = '/2/tweets'
     key_properties = ['id']
+    source_key = 'tweet_ids'
+    id_query_param = 'ids'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS}
+
+
+class SpacesByIds(ConfigIdsStream):
+    """Spaces looked up by id, defaulting to the authenticated user's own
+    spaces (from `spaces_by_creator_ids`)."""
+    tap_stream_id = 'spaces_by_ids'
+    path = '/2/spaces'
+    key_properties = ['id']
+    source_key = 'space_ids'
+    id_query_param = 'ids'
+    auth = 'user'
+    params = {'space.fields': SPACE_FIELDS}
+
+
+class SpacesByCreatorIds(ConfigIdsSelfDefaultStream):
+    """Spaces created by the given users, defaulting to just the
+    authenticated user."""
+    tap_stream_id = 'spaces_by_creator_ids'
+    path = '/2/spaces/by/creator_ids'
+    key_properties = ['id']
+    source_key = 'creator_ids'
+    id_query_param = 'user_ids'
+    auth = 'user'
+    params = {'space.fields': SPACE_FIELDS}
+
+
+class TrendsByWoeid(ConfigLoopMultiStream):
+    """Trending topics for one or more WOEIDs (Where On Earth IDs), defaulting
+    to worldwide."""
+    tap_stream_id = 'trends_by_woeid'
+    path = '/2/trends/by/woeid/{id}'
+    key_properties = ['trend_name']
+    source_key = 'woeids'
+    auth = 'user'
+    paginated = False
+    params = {'trend.fields': TREND_FIELDS}
+
+
+class ComplianceJobs(SingletonListStream):
+    """Batch compliance jobs. Requires a genuine App-only Bearer Token to
+    actually succeed - a minted token is rejected."""
+    tap_stream_id = 'compliance_jobs'
+    path = '/2/compliance/jobs'
+    key_properties = ['id']
+    auth = 'app'
+    params = {'compliance_job.fields': COMPLIANCE_JOB_FIELDS}
+    required_params = {'type': ('compliance_job_type', 'tweets')}  # (field, default)
+
+
+# ---- Lists (defaults to the authenticated user's own lists) -------------
+class ListById(ConfigLoopStream):
+    """A List's own metadata, looked up by id; also the parent for
+    list_tweets/list_members/list_followers. Defaults to the authenticated
+    user's own owned lists (from `user_owned_lists`)."""
+    tap_stream_id = 'list_by_id'
+    path = '/2/lists/{id}'
+    key_properties = ['id']
+    source_key = 'list_ids'
+    auth = 'user'
+    params = {'list.fields': LIST_FIELDS}
+
+
+class ListTweets(ParentStream):
+    """Posts in a List's timeline."""
+    tap_stream_id = 'list_tweets'
+    path = '/2/lists/{id}/tweets'
+    key_properties = ['id']
+    source_key = 'list_by_id'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class ListMembers(ParentStream):
+    """Members of a List."""
+    tap_stream_id = 'list_members'
+    path = '/2/lists/{id}/members'
+    key_properties = ['id']
+    source_key = 'list_by_id'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class ListFollowers(ParentStream):
+    """Followers of a List."""
+    tap_stream_id = 'list_followers'
+    path = '/2/lists/{id}/followers'
+    key_properties = ['id']
+    source_key = 'list_by_id'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+# ---- Spaces (defaults to the authenticated user's own spaces) -----------
+class SpaceById(ConfigLoopStream):
+    """A Space's own metadata, looked up by id; also the parent for
+    space_tweets/space_buyers. Defaults to the authenticated user's own
+    spaces (from `spaces_by_creator_ids`)."""
+    tap_stream_id = 'space_by_id'
+    path = '/2/spaces/{id}'
+    key_properties = ['id']
+    source_key = 'space_ids'
+    auth = 'user'
+    params = {'space.fields': SPACE_FIELDS}
+
+
+class SpaceTweets(ParentStream):
+    """Posts shared in a Space."""
+    tap_stream_id = 'space_tweets'
+    path = '/2/spaces/{id}/tweets'
+    key_properties = ['id']
+    source_key = 'space_by_id'
+    auth = 'user'
+    paginated = False
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class SpaceBuyers(ParentStream):
+    """Ticket buyers for a ticketed Space."""
+    tap_stream_id = 'space_buyers'
+    path = '/2/spaces/{id}/buyers'
+    key_properties = ['id']
+    source_key = 'space_by_id'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+# ---- Per-post engagement lookups (default to the authenticated user's own
+# posts via user_tweets) ---------------------------------------------------
+class PostLikingUsers(ConfigLoopMultiStream):
+    """Users who liked a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
+    tap_stream_id = 'post_liking_users'
+    path = '/2/tweets/{id}/liking_users'
+    key_properties = ['id']
+    source_key = 'tweet_ids'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class PostQuoteTweets(ConfigLoopMultiStream):
+    """Quote Posts of a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
+    tap_stream_id = 'post_quote_tweets'
+    path = '/2/tweets/{id}/quote_tweets'
+    key_properties = ['id']
+    source_key = 'tweet_ids'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class PostRepostedBy(ConfigLoopMultiStream):
+    """Users who reposted a Post, defaulting to the authenticated user's own
+    posts (from `user_tweets`)."""
+    tap_stream_id = 'post_reposted_by'
+    path = '/2/tweets/{id}/retweeted_by'
+    key_properties = ['id']
+    source_key = 'tweet_ids'
+    auth = 'user'
+    params = {'user.fields': USER_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+class PostReposts(ConfigLoopMultiStream):
+    """Reposts of a Post, defaulting to the authenticated user's own posts
+    (from `user_tweets`)."""
+    tap_stream_id = 'post_reposts'
+    path = '/2/tweets/{id}/retweets'
+    key_properties = ['id']
+    source_key = 'tweet_ids'
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+
+
+# ---- Search / query-driven streams -----------------------------------
+class PostSearchRecent(SearchStream):
+    """Search Posts from the last 7 days, defaulting to the authenticated
+    user's own posts. INCREMENTAL on `created_at`, bookmarked by the
+    resolved query text."""
+    tap_stream_id = 'post_search_recent'
+    path = '/2/tweets/search/recent'
+    key_properties = ['id']
+    auth = 'user'
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'include_legacy_cards': 'true',
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        # As per the API document, the maximum page size is 1000 but API throws an error if a page size passed more than 200
-        'count': 200,
-        'cursor': None
-    }
+    replication_key = 'created_at'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+    required_params = {'query': ('post_search_query', None)}
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/poll#poll-cards
-class CardsPoll(TwitterAds):
-    tap_stream_id = "cards_poll"
-    path = 'accounts/{account_id}/cards/poll'
-    data_key = 'data'
+
+class PostSearchAll(SearchStream):
+    """Full-archive Post search (needs an elevated/Academic-Research-tier
+    access level), defaulting to the authenticated user's own posts.
+    INCREMENTAL on `created_at`, bookmarked by the resolved query text."""
+    tap_stream_id = 'post_search_all'
+    path = '/2/tweets/search/all'
     key_properties = ['id']
+    auth = 'user'
     replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    replication_key = 'created_at'
+    params = {'post.fields': POST_FIELDS, 'max_results': DEFAULT_PAGE_SIZE}
+    required_params = {'query': ('post_search_query', None)}
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/image-conversation#image-conversation-cards
-class CardsImageConversation(TwitterAds):
-    tap_stream_id = "cards_image_conversation"
-    path = 'accounts/{account_id}/cards/image_conversation'
-    data_key = 'data'
+
+class PostCountsRecent(SearchStream):
+    """Post volume (last 7 days) matching a query, defaulting to the
+    authenticated user's own posts."""
+    tap_stream_id = 'post_counts_recent'
+    path = '/2/tweets/counts/recent'
+    key_properties = ['start']
+    auth = 'user'
+    params = {'granularity': 'hour'}
+    required_params = {'query': ('post_search_query', None)}
+
+
+class PostCountsAll(SearchStream):
+    """Full-archive Post volume matching a query, defaulting to the
+    authenticated user's own posts. Requires a genuine App-only Bearer Token
+    to actually succeed - a minted token is rejected."""
+    tap_stream_id = 'post_counts_all'
+    path = '/2/tweets/counts/all'
+    key_properties = ['start']
+    auth = 'app'
+    params = {'granularity': 'day'}
+    required_params = {'query': ('post_search_query', None)}
+
+
+class CommunityNotesSearchWritten(SearchStream):
+    """Community Notes written by (or eligible for) the authenticated
+    account."""
+    tap_stream_id = 'community_notes_search_written'
+    path = '/2/notes/search/notes_written'
     key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    auth = 'user'
+    params = {'note.fields': COMMUNITY_NOTE_FIELDS}
+    required_params = {'test_mode': ('community_notes_test_mode', False)}
 
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/video-conversation#video-conversation-cards
-class CardsVideoConversation(TwitterAds):
-    tap_stream_id = "cards_video_conversation"
-    path = 'accounts/{account_id}/cards/video_conversation'
-    data_key = 'data'
+
+class CommunityNotesEligiblePosts(SearchStream):
+    """Posts eligible for a Community Note from the authenticated account."""
+    tap_stream_id = 'community_notes_eligible_posts'
+    path = '/2/notes/search/posts_eligible_for_notes'
     key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
+    auth = 'user'
+    params = {'post.fields': POST_FIELDS}
+    required_params = {'test_mode': ('community_notes_test_mode', False)}
 
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/content-categories#content-categories
-class ContentCategories(TwitterAds):
-    tap_stream_id = "content_categories"
-    path = 'content_categories'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'FULL_TABLE'
-    params = {}
 
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/funding-instruments#funding-instruments
-class FundingInstruments(TwitterAds):
-    tap_stream_id = "funding_instruments"
-    path = 'accounts/{account_id}/funding_instruments'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/iab-categories#iab-categories
-class IabCategories(TwitterAds):
-    tap_stream_id = "iab_categories"
-    path = 'iab_categories'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-criteria#targeting-criteria
-class TargetingCriteria(TwitterAds):
-    tap_stream_id = 'targeting_criteria'
-    path = 'accounts/{account_id}/targeting_criteria'
-    data_key = 'data'
-    key_properties = ['line_item_id', 'id']
-    replication_method = 'INCREMENTAL'
-    parent_ids_limit = 200
-    params = {
-        'line_item_ids': '{parent_ids}', # up to 200 comma delim ids
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-    parent_stream = 'line_items'
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/line-items#line-items
-class LineItems(TwitterAds):
-    tap_stream_id = "line_items"
-    path = 'accounts/{account_id}/line_items'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-    children = ["targeting_criteria"]
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/media-creatives#media-creatives
-class MediaCreatives(TwitterAds):
-    tap_stream_id = "media_creatives"
-    path = 'accounts/{account_id}/media_creatives'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/preroll-call-to-actions#preroll-call-to-actions
-class PrerollCallToActions(TwitterAds):
-    tap_stream_id = "preroll_call_to_actions"
-    path = 'accounts/{account_id}/preroll_call_to_actions'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# References: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promoted-accounts#promoted-accounts
-class PromotedAccounts(TwitterAds):
-    tap_stream_id = "promoted_accounts"
-    path = 'accounts/{account_id}/promoted_accounts'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promoted-tweets#promoted-tweets
-class PromotedTweets(TwitterAds):
-    tap_stream_id = "promoted_tweets"
-    path = 'accounts/{account_id}/promoted_tweets'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-    
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/promotable-users#promotable-users
-class PromotableUsers(TwitterAds):
-    tap_stream_id = "promotable_users"
-    path = 'accounts/{account_id}/promotable_users'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/scheduled-promoted-tweets#scheduled-promoted-tweets
-class ScheduledPromotedTweets(TwitterAds):
-    tap_stream_id = "scheduled_promoted_tweets"
-    path = 'accounts/{account_id}/scheduled_promoted_tweets'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/audiences/api-reference/tailored-audiences#tailored-audiences
-class TailoredAudiences(TwitterAds):
-    tap_stream_id = "tailored_audiences"
-    path = 'accounts/{account_id}/custom_audiences'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['updated_at']
-    params = {
-        'sort_by': ['updated_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-app-store-categories
-class TargetingAppStoreCategories(TwitterAds):
-    tap_stream_id = "targeting_app_store_categories"
-    path = 'targeting_criteria/app_store_categories'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {}
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-conversations
-class TargetingConversations(TwitterAds):
-    tap_stream_id = "targeting_conversations"
-    path = 'targeting_criteria/conversations'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
-    
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-devices
-class TargetingDevices(TwitterAds):
-    tap_stream_id = "targeting_devices"
-    path = 'targeting_criteria/devices'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-events
-class TargetingEvents(TwitterAds):
-    tap_stream_id = "targeting_events"
-    path = 'targeting_criteria/events'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'start_time': '{start_date}',
-        'country_codes': '{country_codes}',
-        'event_types': 'CONFERENCE,HOLIDAY,MUSIC_AND_ENTERTAINMENT,OTHER,POLITICS,RECURRING,SPORTS',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-interests
-class TargetingInterests(TwitterAds):
-    tap_stream_id = "targeting_interests"
-    path = 'targeting_criteria/interests'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-languages
-class TargetingLanguages(TwitterAds):
-    tap_stream_id = "targeting_languages"
-    path = 'targeting_criteria/languages'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-locations
-class TargetingLocations(TwitterAds):
-    tap_stream_id = "targeting_locations"
-    path = 'targeting_criteria/locations'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    sub_types = ['{country_code_list}']
-    params = {
-        'country_code': '{sub_type}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-network-operators
-class TargetingNetworkOperators(TwitterAds):
-    tap_stream_id = "targeting_network_operators"
-    path = 'targeting_criteria/network_operators'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    sub_types = ['{country_code_list}']
-    params = {
-        'country_code': '{sub_type}',
-        'count': 1000,
-        'cursor': None
-    }
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-platform-versions
-class TargetingPlatformVersions(TwitterAds):
-    tap_stream_id = "targeting_platform_versions"
-    path = 'targeting_criteria/platform_versions'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {}
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-platforms
-class TargetingPlatforms(TwitterAds):
-    tap_stream_id = "targeting_platforms"
-    path = 'targeting_criteria/platforms'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    params = {}
-
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-shows
-class TargetingTVShows(TwitterAds):
-    tap_stream_id = "targeting_tv_shows"
-    path = 'targeting_criteria/tv_shows'
-    data_key = 'data'
-    key_properties = ['targeting_value']
-    replication_method = 'FULL_TABLE'
-    parent_ids_limit = 1
-    params = {
-        'locale': '{parent_ids}',
-        'count': 50,
-        'cursor': None
-    }
-    parent_stream = "targeting_tv_markets"
-    
-# Reference: https://developer.twitter.com/en/docs/ads/campaign-management/api-reference/targeting-options#get-targeting-criteria-tv-markets
-class TargetingTvMarkets(TwitterAds):
-    tap_stream_id = "targeting_tv_markets"   
-    path = 'targeting_criteria/tv_markets'
-    data_key = 'data'
-    key_properties = ['locale']
-    replication_method = 'FULL_TABLE'
-    params = {}
-    children = ["targeting_tv_shows"]
-
-# Reference: https://developer.twitter.com/en/docs/ads/creatives/api-reference/tweets#get-accounts-account-id-scoped-timeline
-    # Data Dictionary: https://developer.twitter.com/en/docs/tweets/data-dictionary/overview/tweet-object
-    # User Data Dictionary: https://developer.twitter.com/en/docs/tweets/data-dictionary/overview/user-object
-class Tweets(TwitterAds):
-    tap_stream_id = "tweets"
-    path = 'accounts/{account_id}/tweets'
-    data_key = 'data'
-    key_properties = ['id']
-    replication_method = 'INCREMENTAL'
-    replication_keys = ['created_at']
-    datetime_format = '%a %b %d %H:%M:%S %z %Y'
-    sub_types = ['PUBLISHED', 'SCHEDULED'] # NOT DRAFT
-    params = {
-        'tweet_type': '{sub_type}',
-        'timeline_type': 'ALL',
-        'sort_by': ['created_at-desc'],
-        'with_deleted': '{with_deleted}',
-        'count': 1000,
-        'cursor': None # NOT include_mentions_and_replies
-    }
-    
-
-# dictionary of the stream classes
-STREAMS = {
-    "accounts": Accounts,
-    "account_media": AccountMedia,
-    "advertiser_business_categories": AdvertiserBusinessCategories,
-    "tracking_tags": TrackingTags,
-    "campaigns": Campaigns,
-    "cards": Cards,
-    "cards_poll": CardsPoll,
-    "cards_image_conversation": CardsImageConversation,
-    "cards_video_conversation": CardsVideoConversation,
-    "content_categories": ContentCategories,
-    "funding_instruments": FundingInstruments,
-    "iab_categories": IabCategories,
-    "line_items": LineItems,
-    "media_creatives": MediaCreatives,
-    "preroll_call_to_actions": PrerollCallToActions,
-    "promoted_accounts": PromotedAccounts,
-    "promoted_tweets": PromotedTweets,
-    "promotable_users": PromotableUsers,
-    "scheduled_promoted_tweets": ScheduledPromotedTweets,
-    "tailored_audiences": TailoredAudiences,
-    "targeting_app_store_categories": TargetingAppStoreCategories,
-    "targeting_conversations": TargetingConversations,
-    "targeting_devices": TargetingDevices,
-    "targeting_events": TargetingEvents,
-    "targeting_interests": TargetingInterests,
-    "targeting_languages": TargetingLanguages,
-    "targeting_locations": TargetingLocations,
-    "targeting_network_operators": TargetingNetworkOperators,
-    "targeting_platform_versions": TargetingPlatformVersions,
-    "targeting_platforms": TargetingPlatforms,
-    "targeting_tv_markets": TargetingTvMarkets,
-    "tweets": Tweets,
-    "targeting_criteria": TargetingCriteria,
-    "targeting_tv_shows" :TargetingTVShows,
-}
+STREAMS = {tap_stream_id: cls() for tap_stream_id, cls in Stream._registry.items()}

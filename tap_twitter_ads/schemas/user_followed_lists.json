@@ -1,0 +1,58 @@
+{
+  "type": [
+    "null",
+    "object"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "name": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "description": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "owner_id": {
+      "type": [
+        "null",
+        "string"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "null",
+        "string"
+      ],
+      "format": "date-time"
+    },
+    "private": {
+      "type": [
+        "null",
+        "boolean"
+      ]
+    },
+    "follower_count": {
+      "type": [
+        "null",
+        "integer"
+      ]
+    },
+    "member_count": {
+      "type": [
+        "null",
+        "integer"
+      ]
+    }
+  }
+}

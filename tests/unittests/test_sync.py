@@ -4,7 +4,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from tap_twitter_ads.discover import discover
+from tap_twitter_ads.discover import discover as _discover
 from tap_twitter_ads.client import XApiClient
 from tap_twitter_ads.sync import sync, get_selected_streams
 from tap_twitter_ads.streams import STREAMS
@@ -38,6 +38,25 @@ CONFIG = {
     'access_token': 'initial_access_token',
     'refresh_token': 'initial_refresh_token',
 }
+
+
+def make_all_accessible_client():
+    """A fake client whose `.get()` always succeeds (never raises), so every
+    stream's check_access() probe passes - mirrors test_discover.py's helper
+    of the same name. `discover()` below always uses this, since the tests
+    in this file only care about sync behavior given an already-selected
+    catalog, not discovery's live access-check filtering."""
+    client = mock.Mock()
+    client.get.return_value = {'data': {'id': '123', 'username': 'someuser'}}
+    return client
+
+
+def discover():
+    """Local wrapper preserving the no-arg call signature used throughout
+    this file: discover.discover() now requires a real client/config (live
+    access checks), so this builds the full, unfiltered catalog via a fake
+    always-accessible client instead."""
+    return _discover(make_all_accessible_client(), CONFIG)
 
 
 class TestSyncUsersMeGroup(unittest.TestCase):

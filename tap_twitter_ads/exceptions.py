@@ -31,6 +31,12 @@ class XApiNotFoundError(XApiClientError):
     pass
 
 
+class XApiPaymentRequiredError(XApiClientError):
+    """402 - the connection/project's API usage credits or plan tier does not
+    cover this endpoint."""
+    pass
+
+
 class XApiBadRequestError(XApiClientError):
     """400 - malformed request (bad/missing query params, invalid id format, etc)."""
     pass
@@ -49,6 +55,7 @@ class XApiServerError(XApiBackoffError):
 X_API_ERROR_CODE_EXCEPTION_MAPPING = {
     400: XApiBadRequestError,
     401: XApiAuthenticationError,
+    402: XApiPaymentRequiredError,
     403: XApiForbiddenError,
     404: XApiNotFoundError,
     429: XApiRateLimitError,

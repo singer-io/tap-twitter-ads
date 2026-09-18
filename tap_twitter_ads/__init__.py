@@ -19,12 +19,10 @@ REQUIRED_CONFIG_KEYS = [
 ]
 
 
-def do_discover():
-    """Discover mode does not make a live API call - streams are statically
-    defined in streams.py - so an expired/rotated access token does not
-    block discovery (only sync requires a valid token)."""
+def do_discover(client, config):
+    """Discover and emit the catalog to stdout"""
     LOGGER.info('Starting discover')
-    catalog = discover()
+    catalog = discover(client, config)
     json.dump(catalog.to_dict(), sys.stdout, indent=2)
     LOGGER.info('Finished discover')
 
@@ -43,9 +41,8 @@ def main():
     client = XApiClient(config, config_path=config_path)
 
     if parsed_args.discover:
-        do_discover()
+        do_discover(client, config)
     elif parsed_args.catalog:
-        # Only sync needs valid credentials - discover is purely static (see do_discover).
         client.check_credentials()
         _sync(client=client, config=config, catalog=catalog, state=state)
 
